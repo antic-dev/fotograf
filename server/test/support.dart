@@ -20,8 +20,10 @@ class FakeDrive extends DriveStore {
   final Set<String> trashed = {};
   final Map<String, String> folders = {};
 
+  bool isConnected = true;
+
   @override
-  bool get connected => true;
+  bool get connected => isConnected;
 
   @override
   Future<String> ensureProjectFolder(String projectId) async {

@@ -33,7 +33,9 @@ class _LightboxPageState extends State<LightboxPage> {
     super.didChangeDependencies();
     if (_pages == null) {
       final c = Scope.read<ClientController>(context);
-      _index = c.indexOf(widget.photoId).clamp(0, c.photos.length - 1);
+      // Nepostojeća fotografija (npr. obrisana) ili prazna galerija → prva.
+      final i = c.indexOf(widget.photoId);
+      _index = i < 0 ? 0 : i;
       _pages = PageController(initialPage: _index);
       _hintTimer = Timer(const Duration(seconds: 4), () {
         if (mounted) setState(() => _showHint = false);

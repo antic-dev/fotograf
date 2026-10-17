@@ -56,9 +56,18 @@ String copiesLabel(int n) => plural(n, 'primerak', 'primerka', 'primeraka');
 void showMessage(BuildContext context, String message, {bool error = false}) {
   final m = ScaffoldMessenger.maybeOf(context);
   if (m == null) return;
+  showMessageOn(m, MediaQuery.sizeOf(context).width, message, error: error);
+}
+
+/// Za slučaj kada se poruka prikazuje posle zatvaranja ekrana koji ju je pokrenuo.
+void showMessageOn(ScaffoldMessengerState m, double screenWidth, String message, {bool error = false}) {
+  // Na širokim ekranima poruka je uska i centrirana, da ne prekriva dugmad.
+  final wide = screenWidth > 640;
   m
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(
+      width: wide ? 520 : null,
+      margin: wide ? null : const EdgeInsets.fromLTRB(16, 0, 16, 16),
       content: Row(children: [
         Icon(error ? Icons.error_outline_rounded : Icons.check_circle_rounded, color: error ? const Color(0xFFFFB4AB) : const Color(0xFF8FE3BF)),
         const SizedBox(width: 12),

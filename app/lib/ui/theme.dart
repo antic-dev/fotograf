@@ -140,7 +140,6 @@ ThemeData buildTheme() {
       backgroundColor: AppColors.ink,
       contentTextStyle: text.bodyLarge?.copyWith(color: Colors.white, fontSize: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: AppColors.paper,

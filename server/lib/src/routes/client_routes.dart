@@ -166,6 +166,8 @@ void mountClientRoutes(Router r, Services s) {
   r.delete('/api/s/<token>/selection/<photoId>', (Request req, String token, String photoId) {
     s.rateLimit(req, 'share-write', 2000, const Duration(minutes: 1));
     final p = project(req, token);
+    // Bez postojeće porudžbine nema šta da se ukloni — ne pravimo praznu.
+    if (orderFor(p, s.visitorId(req)) == null) return jsonOk(orderJson(null));
     final (:order, :cookie) = editableOrder(req, p);
     s.db.exec('DELETE FROM order_items WHERE order_id = ? AND photo_id = ?', [order['id'], photoId]);
     s.db.exec('UPDATE orders SET updated_at = ? WHERE id = ?', [nowMs(), order['id']]);
@@ -190,7 +192,7 @@ void mountClientRoutes(Router r, Services s) {
       "UPDATE orders SET status = 'submitted', name = ?, phone = ?, note = ?, submitted_at = ?, updated_at = ? WHERE id = ?",
       [name, phone, note, now, now, order['id']],
     );
-    s.db.audit('order_submitted', detail: '${p['title']} · $name · $count fotografija', ip: s.ip(req));
+    s.db.audit('order_submitted', detail: '${p['title']} · $name · ${photosLabel(count)}', ip: s.ip(req));
     return withVisitorCookie(jsonOk(orderJson(s.db.one('SELECT * FROM orders WHERE id = ?', [order['id']]))), cookie);
   });
 

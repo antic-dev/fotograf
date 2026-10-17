@@ -10,8 +10,9 @@ import 'auth.dart';
 import 'widgets.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key, this.driveResult});
+  const SettingsPage({super.key, this.driveResult, this.driveMessage});
   final String? driveResult;
+  final String? driveMessage;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -36,7 +37,11 @@ class _SettingsPageState extends State<SettingsPage> {
         case 'povezan':
           showMessage(context, 'Google Drive je uspešno povezan.');
         case 'greska':
-          showMessage(context, 'Povezivanje nije uspelo. Prijavite se nalogom ${AdminAuth.instance.email} i dozvolite pristup.', error: true);
+          showMessage(
+            context,
+            widget.driveMessage ?? 'Povezivanje nije uspelo. Izaberite pravi Google nalog i dozvolite pristup Drive-u.',
+            error: true,
+          );
         case 'otkazano':
           showMessage(context, 'Povezivanje je otkazano.', error: true);
       }

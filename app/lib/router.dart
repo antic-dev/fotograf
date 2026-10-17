@@ -95,7 +95,10 @@ GoRouter buildRouter() => GoRouter(
             GoRoute(path: '/admin/stampa', pageBuilder: (context, state) => _fade(state, const PrintLinksPage())),
             GoRoute(
               path: '/admin/podesavanja',
-              pageBuilder: (context, state) => _fade(state, SettingsPage(driveResult: state.uri.queryParameters['drive'])),
+              pageBuilder: (context, state) => _fade(state, SettingsPage(
+                  driveResult: state.uri.queryParameters['drive'],
+                  driveMessage: state.uri.queryParameters['poruka'],
+                )),
             ),
           ],
         ),

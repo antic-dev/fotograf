@@ -26,6 +26,9 @@ class Api {
   /// Poziva se kada server javi da je administratorska sesija istekla.
   void Function()? onUnauthorized;
 
+  /// Poziva se posle svake uspešne izmene (POST/PUT/PATCH/DELETE).
+  void Function(String path)? onMutation;
+
   static const _headers = {'X-Fotograf': '1'};
 
   Future<dynamic> get(String path) => _send('GET', path);
@@ -53,7 +56,10 @@ class Api {
         data = jsonDecode(text);
       } catch (_) {}
     }
-    if (res.statusCode >= 200 && res.statusCode < 300) return data;
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      if (method != 'GET') onMutation?.call(path);
+      return data;
+    }
     final message = data is Map && data['error'] is String ? data['error'] as String : 'Nešto nije u redu (${res.statusCode}).';
     final err = ApiException(res.statusCode, message, code: data is Map ? data['code'] as String? : null);
     if (err.isUnauthorized && path.startsWith('/api/admin/')) onUnauthorized?.call();

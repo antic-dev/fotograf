@@ -10,7 +10,8 @@ import '../ui/theme.dart';
 Future<Project?> showProjectForm(BuildContext context, {Project? existing}) {
   final phone = isPhone(context);
   if (phone) {
-    return Navigator.of(context).push<Project>(MaterialPageRoute(
+    // Preko celog ekrana (i preko donjeg menija), da se forma ne izgubi pri navigaciji.
+    return Navigator.of(context, rootNavigator: true).push<Project>(MaterialPageRoute(
       fullscreenDialog: true,
       builder: (_) => _ProjectForm(existing: existing, fullscreen: true),
     ));

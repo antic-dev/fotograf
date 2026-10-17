@@ -64,26 +64,57 @@ class _Job {
   final String? watermark;
 }
 
+/// Najviše dve obrade istovremeno: velika fotografija zauzme stotine MB
+/// memorije dok se obrađuje, pa ovo čuva mali server od nestanka memorije.
+final _slots = _Semaphore(2);
+
 /// Teška obrada se radi u zasebnom izolatu da server ostane brz.
 Future<ProcessedImage> processUpload(Uint8List bytes, {required String watermark}) {
   final job = _Job(bytes, watermark);
-  return Isolate.run(() => _process(job));
+  return _slots.run(() => Isolate.run(() => _process(job)));
 }
 
 Future<Uint8List> renderPreview(Uint8List original, {String? watermark}) {
   final job = _Job(original, watermark);
-  return Isolate.run(() {
-    final image = _decode(job.bytes);
-    return _encodePreview(image, job.watermark);
-  });
+  return _slots.run(() => Isolate.run(() {
+        final image = _decode(job.bytes);
+        return _encodePreview(image, job.watermark);
+      }));
 }
 
 Future<Uint8List> renderThumb(Uint8List original, {String? watermark}) {
   final job = _Job(original, watermark);
-  return Isolate.run(() {
-    final image = _decode(job.bytes);
-    return _encodeThumb(image, job.watermark);
-  });
+  return _slots.run(() => Isolate.run(() {
+        final image = _decode(job.bytes);
+        return _encodeThumb(image, job.watermark);
+      }));
+}
+
+class _Semaphore {
+  _Semaphore(this._max);
+
+  final int _max;
+  int _running = 0;
+  final _waiting = <Completer<void>>[];
+
+  Future<T> run<T>(Future<T> Function() task) async {
+    if (_running >= _max) {
+      final c = Completer<void>();
+      _waiting.add(c);
+      await c.future;
+    } else {
+      _running++;
+    }
+    try {
+      return await task();
+    } finally {
+      if (_waiting.isNotEmpty) {
+        _waiting.removeAt(0).complete(); // mesto prelazi direktno sledećem
+      } else {
+        _running--;
+      }
+    }
+  }
 }
 
 img.Image _decode(Uint8List bytes) {
@@ -265,14 +296,42 @@ class MediaCache {
     });
   }
 
-  void deletePhoto(String photoId) {
-    final d = Directory(dir);
-    for (final e in d.listSync()) {
-      if (p.basename(e.path).startsWith('${photoId}_')) {
+  /// Briše sve izvedene slike za date fotografije (jedan prolaz kroz folder).
+  void deletePhotos(Iterable<String> photoIds) {
+    final ids = photoIds.toSet();
+    if (ids.isEmpty) return;
+    for (final e in Directory(dir).listSync()) {
+      final name = p.basename(e.path);
+      final i = name.indexOf('_');
+      if (i > 0 && ids.contains(name.substring(0, i))) {
         try {
           e.deleteSync();
         } catch (_) {}
       }
+    }
+  }
+
+  /// Drži keš ispod [maxBytes]: briše najduže nekorišćene fajlove.
+  /// Originali su na Drive-u, pa se obrisano po potrebi ponovo napravi.
+  Future<void> trim(int maxBytes) async {
+    final files = <(File, FileStat)>[];
+    var total = 0;
+    await for (final e in Directory(dir).list()) {
+      if (e is! File) continue;
+      final st = await e.stat();
+      files.add((e, st));
+      total += st.size;
+    }
+    if (total <= maxBytes) return;
+    DateTime last((File, FileStat) f) => f.$2.accessed.isAfter(f.$2.modified) ? f.$2.accessed : f.$2.modified;
+    files.sort((a, b) => last(a).compareTo(last(b)));
+    final target = (maxBytes * 0.8).round();
+    for (final (f, st) in files) {
+      if (total <= target) break;
+      try {
+        await f.delete();
+        total -= st.size;
+      } catch (_) {}
     }
   }
 }

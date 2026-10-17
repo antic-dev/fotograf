@@ -6,6 +6,7 @@ import 'package:web/web.dart' as web;
 import '../ui/common.dart';
 import '../ui/theme.dart';
 import '../web/browser.dart';
+import 'refresh.dart';
 
 enum UploadStatus { queued, uploading, done, failed }
 
@@ -39,6 +40,7 @@ class UploadManager extends ChangeNotifier {
   final _uploaded = StreamController<String>.broadcast();
   final _guard = LeaveGuard();
   Timer? _throttle;
+  Timer? _autoClear;
 
   /// Emituje ID projekta svaki put kada se fotografija uspešno otpremi.
   Stream<String> get uploaded => _uploaded.stream;
@@ -95,6 +97,7 @@ class UploadManager extends ChangeNotifier {
         ..status = UploadStatus.done
         ..progress = 1;
       _uploaded.add(t.projectId);
+      AdminRefresh.instance.changed();
     }, onError: (Object e) {
       t
         ..status = UploadStatus.failed
@@ -102,7 +105,18 @@ class UploadManager extends ChangeNotifier {
     }).whenComplete(() {
       t.handle = null;
       _pump();
+      _scheduleAutoClear();
       notifyListeners();
+    });
+  }
+
+  /// Kada sve uspešno završi, panel se sam skloni da ne prekriva dugmad.
+  /// Ako nešto nije uspelo, ostaje dok ne pritisnete "Ponovi" ili ×.
+  void _scheduleAutoClear() {
+    _autoClear?.cancel();
+    if (busy || failed > 0 || tasks.isEmpty) return;
+    _autoClear = Timer(const Duration(seconds: 5), () {
+      if (!busy && failed == 0) clear();
     });
   }
 

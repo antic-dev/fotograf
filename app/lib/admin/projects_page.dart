@@ -6,6 +6,7 @@ import '../api/models.dart';
 import '../ui/common.dart';
 import '../ui/theme.dart';
 import 'project_form.dart';
+import 'refresh.dart';
 import 'widgets.dart';
 
 class ProjectsPage extends StatefulWidget {
@@ -24,6 +25,13 @@ class _ProjectsPageState extends State<ProjectsPage> {
   void initState() {
     super.initState();
     _load();
+    AdminRefresh.instance.addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    AdminRefresh.instance.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {

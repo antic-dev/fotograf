@@ -127,30 +127,31 @@ const _mime = {
 Future<Response> _serveWeb(Services s, Request req) async {
   if (req.method != 'GET' && req.method != 'HEAD') return Response(405);
   final root = p.normalize(p.absolute(s.config.webDir));
-  final rel = Uri.decodeComponent(req.url.path);
+  String rel;
+  try {
+    rel = Uri.decodeComponent(req.url.path);
+  } on ArgumentError {
+    rel = ''; // neispravno kodiran URL → početna stranica
+  }
   var file = File(p.normalize(p.join(root, rel)));
   // Sprečava izlazak iz web foldera (path traversal) i skrivene fajlove.
   final insideRoot = p.isWithin(root, file.path);
   final hidden = p.split(rel).any((seg) => seg.startsWith('.'));
-  var isIndex = false;
   if (!insideRoot || hidden || !file.existsSync()) {
     file = File(p.join(root, 'index.html'));
-    isIndex = true;
     if (!file.existsSync()) {
       return Response.notFound('Web aplikacija nije izgrađena. Pokrenite: cd app && flutter build web');
     }
   }
   final ext = p.extension(file.path).toLowerCase();
-  final noCache = isIndex ||
-      ext == '.html' ||
-      p.basename(file.path) == 'flutter_bootstrap.js' ||
-      p.basename(file.path) == 'flutter_service_worker.js' ||
-      p.basename(file.path) == 'version.json';
   final stat = file.statSync();
   final etag = '"${stat.size.toRadixString(36)}-${stat.modified.millisecondsSinceEpoch.toRadixString(36)}"';
   final headers = {
     HttpHeaders.contentTypeHeader: _mime[ext] ?? 'application/octet-stream',
-    HttpHeaders.cacheControlHeader: noCache ? 'no-cache' : 'public, max-age=3600',
+    // Flutter fajlovi nemaju verziju u imenu (main.dart.js...), pa pregledač
+    // uvek proverava ETag — posle novog deploy-a niko ne dobija mešavinu verzija.
+    // Provera je jeftina (304 bez sadržaja).
+    HttpHeaders.cacheControlHeader: 'no-cache',
     HttpHeaders.etagHeader: etag,
   };
   if (req.headers[HttpHeaders.ifNoneMatchHeader] == etag) return Response.notModified(headers: headers);

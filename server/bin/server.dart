@@ -26,14 +26,23 @@ Future<void> main() async {
   final server = await io.serve(buildHandler(services), config.host, config.port, poweredByHeader: null);
   // Uklanja zastarela podrazumevana zaglavlja (x-xss-protection...) — naša su stroža.
   server.defaultResponseHeaders.clear();
-  server.autoCompress = true;
+  // Kompresiju radi Caddy (samo za tekst); slike i ZIP-ovi su već kompresovani.
+  server.autoCompress = false;
   server.idleTimeout = const Duration(seconds: 120);
   stdout.writeln('Fotograf radi na http://${config.host}:${config.port}  (javni URL: ${config.publicUrl})');
   stdout.writeln('Administrator: ${config.adminEmail}');
 
+  // Keš sličica ne sme da napuni disk servera.
+  Future<void> trimCache() => services.cache.trim(config.cacheMaxBytes).catchError((Object e) {
+        stderr.writeln('Čišćenje keša nije uspelo: $e');
+      });
+  unawaited(trimCache());
+  final trimTimer = Timer.periodic(const Duration(hours: 1), (_) => trimCache());
+
   late final StreamSubscription<ProcessSignal> sigint;
   Future<void> shutdown(ProcessSignal _) async {
     stdout.writeln('Gašenje...');
+    trimTimer.cancel();
     await sigint.cancel();
     await server.close();
     db.close();

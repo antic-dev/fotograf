@@ -343,7 +343,11 @@ class _ProjectPageState extends State<ProjectPage> {
                   itemBuilder: (context, i) {
                     final ph = p.photos[i];
                     final sel = _selected.contains(ph.id);
-                    return GestureDetector(
+                    return Semantics(
+                      button: true,
+                      selected: sel,
+                      label: ph.name,
+                      child: GestureDetector(
                       onTap: () {
                         if (_selecting) {
                           setState(() => sel ? _selected.remove(ph.id) : _selected.add(ph.id));
@@ -380,7 +384,7 @@ class _ProjectPageState extends State<ProjectPage> {
                           ]),
                         ),
                       ),
-                    );
+                    ));
                   },
                 ),
               ),

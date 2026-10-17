@@ -420,7 +420,7 @@ class _Tile extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: 'Fotografija $number${selected ? ', izabrana' : ''}',
+      label: 'Otvori fotografiju $number${selected ? ' (izabrana)' : ''}',
       child: GestureDetector(
         onTap: () => context.push('/g/${c.token}/foto/${photo.id}'),
         child: AnimatedContainer(
@@ -446,6 +446,7 @@ class _Tile extends StatelessWidget {
                   top: 0,
                   right: 0,
                   child: _SelectCircle(
+                    number: number,
                     selected: selected,
                     enabled: c.canEdit,
                     onTap: () {
@@ -463,13 +464,24 @@ class _Tile extends StatelessWidget {
 }
 
 class _SelectCircle extends StatelessWidget {
-  const _SelectCircle({required this.selected, required this.enabled, required this.onTap});
+  const _SelectCircle({required this.number, required this.selected, required this.enabled, required this.onTap});
+  final int number;
   final bool selected;
   final bool enabled;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: true,
+      selected: selected,
+      label: selected ? 'Izabrana fotografija $number — dodirnite da poništite' : 'Izaberi fotografiju $number',
+      child: _circle(),
+    );
+  }
+
+  Widget _circle() {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: enabled ? onTap : null,

@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:web/web.dart' as web;
 
+import 'admin/refresh.dart';
 import 'router.dart';
 import 'ui/theme.dart';
 
@@ -13,6 +14,7 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   usePathUrlStrategy();
   _protectImages();
+  AdminRefresh.instance; // povezuje automatsko osvežavanje admin stranica
   runApp(const FotografApp());
 }
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:fotograf_server/fotograf_server.dart';
+import 'package:googleapis/drive/v3.dart' as gdrive;
 import 'package:image/image.dart' as img;
 import 'package:test/test.dart';
 
@@ -297,6 +298,61 @@ void main() {
       }
       final res = await app.call('GET', '/g/bilo-sta');
       expect(res.text, contains('app'));
+    });
+  });
+
+  group('otpornost', () {
+    test('uklanjanje bez postojećeg izbora ne pravi praznu porudžbinu', () async {
+      await app.loginAsAdmin();
+      var res = await app.call('POST', '/api/admin/projects', json: {'title': 'Test'});
+      final id = res.json['id'] as String;
+      final token = (res.json['shareUrl'] as String).split('/g/').last;
+      res = await app.call('POST', '/api/admin/projects/$id/photos?name=a.jpg', bytes: testJpeg());
+      final photoId = res.json['id'];
+      app.cookies.clear();
+      res = await app.call('DELETE', '/api/s/$token/selection/$photoId');
+      expect(res.status, 200);
+      expect(app.cookies.keys.where((k) => k.contains('fv')), isEmpty);
+      expect(app.services.db.scalar('SELECT COUNT(*) FROM orders'), 0);
+      expect(app.services.db.scalar('SELECT COUNT(*) FROM visitors'), 0);
+    });
+
+    test('otpremanje bez povezanog Drive-a daje jasnu poruku', () async {
+      await app.loginAsAdmin();
+      final res0 = await app.call('POST', '/api/admin/projects', json: {'title': 'Bez Drive-a'});
+      app.drive.isConnected = false;
+      final res = await app.call('POST', '/api/admin/projects/${res0.json['id']}/photos?name=a.jpg', bytes: testJpeg());
+      expect(res.status, 503);
+      expect(res.json['code'], 'drive_not_connected');
+    });
+
+    test('Google greške se pretvaraju u razumljive poruke', () {
+      final full = DriveStore.driveError(gdrive.DetailedApiRequestError(403, "The user's Drive storage quota has been exceeded."));
+      expect(full.status, 507);
+      expect(full.message, contains('pun'));
+      final disabled = DriveStore.driveError(gdrive.DetailedApiRequestError(403, 'Drive API has not been used in project'));
+      expect(disabled.code, 'drive_api_disabled');
+      expect(DriveStore.driveError(gdrive.DetailedApiRequestError(500, 'x')).status, 502);
+    });
+
+    test('keš se čisti kada pređe granicu, a brisanje fotografija je u jednom prolazu', () async {
+      final cache = app.services.cache;
+      for (var i = 0; i < 10; i++) {
+        File('${cache.dir}/p${i}_t_clean.jpg').writeAsBytesSync(List.filled(1000, 1));
+      }
+      await cache.trim(5000);
+      final left = Directory(cache.dir).listSync().length;
+      expect(left, lessThanOrEqualTo(4));
+      cache.deletePhotos(['p9', 'p8', 'p7', 'p6', 'p5', 'p4', 'p3', 'p2', 'p1', 'p0']);
+      expect(Directory(cache.dir).listSync(), isEmpty);
+    });
+
+    test('web fajlovi se uvek proveravaju (nema mešanja verzija posle deploy-a)', () async {
+      Directory('${app.tmp.path}/web').createSync();
+      File('${app.tmp.path}/web/index.html').writeAsStringSync('<html>app</html>');
+      File('${app.tmp.path}/web/main.dart.js').writeAsStringSync('// js');
+      final res = await app.call('GET', '/main.dart.js');
+      expect(res.headers['cache-control'], 'no-cache');
     });
   });
 

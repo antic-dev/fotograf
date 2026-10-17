@@ -5,6 +5,7 @@ import '../api/models.dart';
 import '../ui/common.dart';
 import '../ui/theme.dart';
 import 'send_to_printer.dart';
+import 'refresh.dart';
 import 'widgets.dart';
 
 class PrintLinksPage extends StatefulWidget {
@@ -22,6 +23,13 @@ class _PrintLinksPageState extends State<PrintLinksPage> {
   void initState() {
     super.initState();
     _load();
+    AdminRefresh.instance.addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    AdminRefresh.instance.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {

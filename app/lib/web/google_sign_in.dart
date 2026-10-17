@@ -18,7 +18,6 @@ extension type _IdConfig._(JSObject _) implements JSObject {
     bool cancel_on_tap_outside,
     String ux_mode,
     bool itp_support,
-    bool use_fedcm_for_button,
     String context,
   });
 }
@@ -92,7 +91,6 @@ class _GoogleSignInButtonState extends State<GoogleSignInButton> {
         cancel_on_tap_outside: true,
         ux_mode: 'popup',
         itp_support: true,
-        use_fedcm_for_button: true,
         context: 'signin',
         callback: (_CredentialResponse r) {
           final c = r.credential;

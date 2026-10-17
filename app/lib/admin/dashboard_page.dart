@@ -8,6 +8,7 @@ import '../ui/theme.dart';
 import 'project_form.dart';
 import 'send_to_printer.dart';
 import 'upload_picker.dart';
+import 'refresh.dart';
 import 'widgets.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -25,6 +26,13 @@ class _DashboardPageState extends State<DashboardPage> {
   void initState() {
     super.initState();
     _load();
+    AdminRefresh.instance.addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    AdminRefresh.instance.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {

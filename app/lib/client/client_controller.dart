@@ -25,7 +25,11 @@ class ClientController extends ChangeNotifier {
   int? submittedAt;
   bool onlySelected = false;
   int _pending = 0;
-  final Map<String, Future<void>> _queues = {};
+
+  /// Svi zahtevi za čuvanje idu strogo jedan za drugim. Ovo je bitno pri prvom
+  /// ulasku: server tek iz prvog odgovora postavlja kolačić posetioca, pa bi
+  /// dva paralelna zahteva napravila dva različita posetioca.
+  Future<void> _chain = Future.value();
 
   String get _base => '/api/s/$token';
   String thumbUrl(String id) => '$_base/photos/$id/thumb';
@@ -92,7 +96,7 @@ class ClientController extends ChangeNotifier {
       _items.remove(photoId);
       _order.remove(photoId);
       notifyListeners();
-      _sync(photoId, () => _api.delete('$_base/selection/$photoId'));
+      _sync(() => _api.delete('$_base/selection/$photoId'));
       return null;
     }
     final max = project?.maxPhotos;
@@ -102,7 +106,7 @@ class ClientController extends ChangeNotifier {
     _items[photoId] = OrderItem(photoId: photoId, quantity: 1);
     _order.add(photoId);
     notifyListeners();
-    _sync(photoId, () => _api.put('$_base/selection/$photoId'));
+    _sync(() => _api.put('$_base/selection/$photoId'));
     return null;
   }
 
@@ -112,18 +116,16 @@ class ClientController extends ChangeNotifier {
     if (current == null || !canEdit || quantity < 1 || quantity > 99) return;
     _items[photoId] = current.copyWith(quantity: quantity);
     notifyListeners();
-    _sync(photoId, () => _api.put('$_base/selection/$photoId', {'quantity': quantity}));
+    _sync(() => _api.put('$_base/selection/$photoId', {'quantity': quantity}));
   }
 
   /// Greške pri čuvanju se prijavljuju preko ovog callback-a.
   void Function(String message)? onSyncError;
 
-  void _sync(String photoId, Future<dynamic> Function() call) {
+  void _sync(Future<dynamic> Function() call) {
     _pending++;
     notifyListeners();
-    final prev = _queues[photoId] ?? Future.value();
-    late final Future<void> next;
-    next = prev.then((_) async {
+    _chain = _chain.then((_) async {
       try {
         await call();
       } catch (e) {
@@ -131,11 +133,9 @@ class ClientController extends ChangeNotifier {
         await _resync();
       } finally {
         _pending--;
-        if (identical(_queues[photoId], next)) _queues.remove(photoId);
         notifyListeners();
       }
     });
-    _queues[photoId] = next;
   }
 
   Future<void> _resync() async {
@@ -146,7 +146,7 @@ class ClientController extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> _flush() => Future.wait(_queues.values.toList());
+  Future<void> _flush() => _chain;
 
   Future<void> submit({required String name, required String phone, required String note}) async {
     await _flush();

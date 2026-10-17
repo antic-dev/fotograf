@@ -41,14 +41,6 @@ Map<String, Object?> printSummary(List<Row> items) {
   };
 }
 
-/// Srpska množina: 1 fotografija, 2 fotografije, 5 fotografija.
-String photosLabel(int n) {
-  final m10 = n % 10, m100 = n % 100;
-  if (m10 == 1 && m100 != 11) return '$n fotografija';
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return '$n fotografije';
-  return '$n fotografija';
-}
-
 String printSummaryText(Map<String, Object?> summary, String printSize) {
   final b = StringBuffer()
     ..writeln('Format: $printSize cm')

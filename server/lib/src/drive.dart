@@ -42,6 +42,13 @@ class DriveStore {
   auth.AutoRefreshingAuthClient? _client;
   drive.DriveApi? _api;
 
+  /// Folderi za koje smo nedavno proverili da postoje (izbegava proveru pri
+  /// svakoj od stotina otpremljenih fotografija).
+  final Map<String, DateTime> _verifiedFolders = {};
+
+  /// Sprečava da dva paralelna otpremanja naprave dva foldera za isti projekat.
+  final Map<String, Future<String>> _folderLocks = {};
+
   bool get connected => db.setting('drive_refresh_token') != null;
   String? get connectedEmail => db.setting('drive_email');
 
@@ -67,6 +74,7 @@ class DriveStore {
     _client?.close();
     _client = null;
     _api = null;
+    _verifiedFolders.clear();
   }
 
   Future<T> _call<T>(Future<T> Function(drive.DriveApi api) fn) async {
@@ -81,7 +89,29 @@ class DriveStore {
       reset();
       throw ApiError(503, 'Google Drive pristup je opozvan. Ponovo povežite nalog u Podešavanjima.',
           code: 'drive_not_connected');
+    } on drive.DetailedApiRequestError catch (e) {
+      throw driveError(e);
     }
+  }
+
+  /// Pretvara Google grešku u jasnu poruku za administratora.
+  static ApiError driveError(drive.DetailedApiRequestError e) {
+    final reasons = e.errors.map((x) => x.reason ?? '').toSet();
+    final msg = (e.message ?? '').toLowerCase();
+    if (reasons.contains('storageQuotaExceeded') || msg.contains('storage quota')) {
+      return ApiError(507, 'Google Drive je pun. Oslobodite prostor pa pokušajte ponovo.', code: 'drive_full');
+    }
+    if (reasons.contains('accessNotConfigured') || (e.message ?? '').contains('has not been used')) {
+      return ApiError(503, 'Google Drive API nije uključen u Google Cloud projektu (vidi README, korak 1).', code: 'drive_api_disabled');
+    }
+    if (e.status == 401 || reasons.contains('insufficientPermissions') || reasons.contains('authError')) {
+      return ApiError(503, 'Google Drive pristup nije ispravan. Ponovo povežite nalog u Podešavanjima.', code: 'drive_not_connected');
+    }
+    if (e.status == 404) return ApiError(404, 'Fajl više ne postoji na Google Drive-u.', code: 'drive_missing');
+    if (e.status == 429 || reasons.contains('rateLimitExceeded') || reasons.contains('userRateLimitExceeded')) {
+      return ApiError(503, 'Google Drive je trenutno zauzet. Pokušajte ponovo za minut.', code: 'drive_busy');
+    }
+    return ApiError(502, 'Google Drive trenutno ne odgovara (${e.status}). Pokušajte ponovo.', code: 'drive_error');
   }
 
   Future<String> rootFolderId() async {
@@ -116,11 +146,21 @@ class DriveStore {
       });
 
   /// Vraća folder projekta; pravi ga ako ne postoji ili je obrisan.
-  Future<String> ensureProjectFolder(String projectId) async {
+  Future<String> ensureProjectFolder(String projectId) {
+    final pending = _folderLocks[projectId];
+    if (pending != null) return pending;
+    final f = _ensureProjectFolder(projectId);
+    _folderLocks[projectId] = f;
+    return f.whenComplete(() => _folderLocks.remove(projectId));
+  }
+
+  Future<String> _ensureProjectFolder(String projectId) async {
     final row = db.one('SELECT title, event_date, drive_folder_id FROM projects WHERE id = ?', [projectId]);
     if (row == null) throw ApiError.notFound('Projekat ne postoji.');
     final current = row['drive_folder_id'] as String?;
     if (current != null) {
+      final checked = _verifiedFolders[current];
+      if (checked != null && DateTime.now().difference(checked) < const Duration(minutes: 10)) return current;
       final alive = await _call((api) async {
         try {
           final f = await api.files.get(current, $fields: 'id,trashed') as drive.File;
@@ -130,11 +170,15 @@ class DriveStore {
           rethrow;
         }
       });
-      if (alive) return current;
+      if (alive) {
+        _verifiedFolders[current] = DateTime.now();
+        return current;
+      }
     }
     final root = await rootFolderId();
     final id = await _createFolder(folderName(row['title'] as String, row['event_date'] as String?), root);
     db.exec('UPDATE projects SET drive_folder_id = ? WHERE id = ?', [id, projectId]);
+    _verifiedFolders[id] = DateTime.now();
     return id;
   }
 
@@ -181,6 +225,7 @@ class DriveStore {
 
   /// Premešta u Kantu na Drive-u (može se vratiti narednih 30 dana).
   Future<void> trash(String fileId) => _call((api) async {
+        _verifiedFolders.remove(fileId);
         try {
           await api.files.update(drive.File()..trashed = true, fileId, $fields: 'id');
         } on drive.DetailedApiRequestError catch (e) {

@@ -112,14 +112,26 @@ void mountAdminRoutes(Router r, Services s) {
     if (b.containsKey('deadline')) out['deadline'] = intField(b, 'deadline', min: 0, max: 1 << 50);
   }
 
+  /// Premešta u Kantu na Drive-u "koliko može": i ako Drive trenutno ne
+  /// odgovara, brisanje iz aplikacije uspeva (fajl tada ostaje na Drive-u).
+  Future<void> trashQuietly(String driveId) async {
+    try {
+      await s.drive.trash(driveId);
+    } catch (e) {
+      stderr.writeln('Drive trash nije uspeo za $driveId: $e');
+    }
+  }
+
   Future<void> deletePhotos(Row project, List<String> ids) async {
+    final deleted = <String>[];
     for (final id in ids) {
       final ph = db.one('SELECT * FROM photos WHERE id = ? AND project_id = ?', [id, project['id']]);
       if (ph == null) continue;
-      await s.drive.trash(ph['drive_file_id'] as String);
+      await trashQuietly(ph['drive_file_id'] as String);
       db.exec('DELETE FROM photos WHERE id = ?', [id]);
-      s.cache.deletePhoto(id);
+      deleted.add(id);
     }
+    s.cache.deletePhotos(deleted);
     final cover = db.scalar('SELECT cover_photo_id FROM projects WHERE id = ?', [project['id']]);
     if (cover != null && ids.contains(cover)) {
       final next = db.scalar('SELECT id FROM photos WHERE project_id = ? ORDER BY sort_index LIMIT 1', [project['id']]);
@@ -266,6 +278,9 @@ void mountAdminRoutes(Router r, Services s) {
         target = '/admin/podesavanja?drive=povezan';
       } on ApiError catch (e) {
         db.audit('drive_connect_failed', detail: e.message, ip: s.ip(req));
+        target = '/admin/podesavanja?drive=greska&poruka=${Uri.encodeQueryComponent(e.message)}';
+      } catch (e) {
+        db.audit('drive_connect_failed', detail: '$e', ip: s.ip(req));
         target = '/admin/podesavanja?drive=greska';
       }
     }
@@ -352,10 +367,10 @@ void mountAdminRoutes(Router r, Services s) {
   r.delete('/api/admin/projects/<id>', (Request req, String id) async {
     final p = projectRow(id);
     final folder = p['drive_folder_id'] as String?;
-    if (folder != null && s.drive.connected) await s.drive.trash(folder);
+    if (folder != null && s.drive.connected) await trashQuietly(folder);
     final photoIds = db.query('SELECT id FROM photos WHERE project_id = ?', [id]).map((r) => r['id'] as String).toList();
     db.exec('DELETE FROM projects WHERE id = ?', [id]);
-    photoIds.forEach(s.cache.deletePhoto);
+    s.cache.deletePhotos(photoIds);
     db.audit('project_deleted', detail: p['title'] as String, ip: s.ip(req));
     return jsonOk({'ok': true});
   });
@@ -385,6 +400,9 @@ void mountAdminRoutes(Router r, Services s) {
     if (mime == 'image/heic') {
       throw ApiError(415, '"$filename" je HEIC. Izvezite ga kao JPEG pa otpremite ponovo.', code: 'bad_image');
     }
+
+    // Pre teške obrade: bez povezanog Drive-a nema gde da se sačuva original.
+    if (!s.drive.connected) throw DriveNotConnected();
 
     final ProcessedImage processed;
     try {
@@ -418,7 +436,7 @@ void mountAdminRoutes(Router r, Services s) {
     final b = await readJson(req);
     final ids = stringList(b, 'ids', maxItems: 5000, maxLen: 40) ?? const [];
     await deletePhotos(p, ids);
-    db.audit('photos_deleted', detail: '${p['title']} · ${ids.length}', ip: s.ip(req));
+    db.audit('photos_deleted', detail: '${p['title']} · ${photosLabel(ids.length)}', ip: s.ip(req));
     return jsonOk({'ok': true});
   });
 

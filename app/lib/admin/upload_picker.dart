@@ -13,12 +13,18 @@ import 'widgets.dart';
 /// Izbor fajlova i slanje u red za otpremanje za dati projekat.
 void pickAndUpload(BuildContext context, String projectId, String projectTitle) {
   final messenger = ScaffoldMessenger.maybeOf(context);
+  final width = MediaQuery.sizeOf(context).width;
   pickImages().then((files) {
     if (files.isEmpty) return;
     final warning = UploadManager.instance.add(projectId, projectTitle, files);
-    messenger
-      ?..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(warning ?? 'Otpremam ${photosLabel(files.length)} u „$projectTitle”. Možete nastaviti sa radom.')));
+    if (messenger != null && messenger.mounted) {
+      showMessageOn(
+        messenger,
+        width,
+        warning ?? 'Otpremam ${photosLabel(files.length)} u „$projectTitle”. Možete nastaviti sa radom.',
+        error: warning != null,
+      );
+    }
   });
 }
 

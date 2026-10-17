@@ -21,6 +21,7 @@ class Config {
     required this.cookieSecure,
     required this.trustProxy,
     required this.maxUploadBytes,
+    this.cacheMaxBytes = 10 * 1024 * 1024 * 1024,
     this.smtpHost,
     this.smtpPort = 587,
     this.smtpUser,
@@ -49,6 +50,9 @@ class Config {
   final bool cookieSecure;
   final bool trustProxy;
   final int maxUploadBytes;
+
+  /// Najveća veličina keša sličica i pregleda na disku servera.
+  final int cacheMaxBytes;
 
   final String? smtpHost;
   final int smtpPort;
@@ -102,6 +106,7 @@ class Config {
       cookieSecure: cookieSecure,
       trustProxy: (e['TRUST_PROXY'] ?? 'false').toLowerCase() == 'true',
       maxUploadBytes: int.parse(e['MAX_UPLOAD_MB'] ?? '80') * 1024 * 1024,
+      cacheMaxBytes: (double.parse(e['CACHE_MAX_GB'] ?? '10') * 1024 * 1024 * 1024).round(),
       smtpHost: e['SMTP_HOST'],
       smtpPort: int.tryParse(e['SMTP_PORT'] ?? '') ?? 587,
       smtpUser: e['SMTP_USER'],
