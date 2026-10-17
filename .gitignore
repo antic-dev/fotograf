@@ -1,0 +1,18 @@
+# Tajne
+.env
+*.env.local
+
+# Podaci servera
+server/data/
+data/
+
+# Dart / Flutter
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+.idea/
+.vscode/
+.DS_Store

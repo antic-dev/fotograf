@@ -1,0 +1,20 @@
+# Caddy automatski pribavlja i obnavlja HTTPS sertifikat (Let's Encrypt).
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Otpremanje originala (do 80 MB po fotografiji)
+	request_body {
+		max_size 100MB
+	}
+
+	reverse_proxy app:8080 {
+		# Server veruje samo poslednjoj adresi koju doda Caddy.
+		header_up X-Forwarded-For {remote_host}
+		transport http {
+			read_timeout 10m
+			write_timeout 30m
+		}
+	}
+
+	header -Server
+}

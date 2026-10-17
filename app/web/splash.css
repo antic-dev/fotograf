@@ -1,0 +1,49 @@
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #FBF8F3;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+}
+#splash {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #5E5850;
+  font-size: 17px;
+  transition: opacity .35s ease;
+}
+#splash.hide { opacity: 0; pointer-events: none; }
+#splash .ring {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #1D1B18;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+#splash .lens {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 4px solid #FBF8F3;
+  box-sizing: border-box;
+}
+#splash p { margin: 0; }
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(.9); }
+}
+/* Štampa stranice ne prikazuje fotografije. */
+@media print {
+  body { display: none !important; }
+}
