@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:shelf/shelf.dart';
@@ -43,8 +42,6 @@ void mountAdminRoutes(Router r, Services s) {
       'status': p['status'],
       'maxPhotos': p['max_photos'],
       'deadline': p['deadline'],
-      'sizes': jsonDecode(p['sizes'] as String),
-      'finishes': jsonDecode(p['finishes'] as String),
       'coverPhotoId': p['cover_photo_id'],
       'driveFolderUrl': folder == null ? null : 'https://drive.google.com/drive/folders/$folder',
       'shareUrl': s.shareUrl(s.decryptOrNull(p['share_token_enc'] as String) ?? ''),
@@ -113,16 +110,6 @@ void mountAdminRoutes(Router r, Services s) {
     }
     if (b.containsKey('maxPhotos')) out['max_photos'] = intField(b, 'maxPhotos', min: 1, max: 100000);
     if (b.containsKey('deadline')) out['deadline'] = intField(b, 'deadline', min: 0, max: 1 << 50);
-    final sizes = stringList(b, 'sizes');
-    if (sizes != null) {
-      if (sizes.isEmpty) throw ApiError.badRequest('Unesite bar jednu veličinu.');
-      out['sizes'] = jsonEncode(sizes);
-    }
-    final finishes = stringList(b, 'finishes');
-    if (finishes != null) {
-      if (finishes.isEmpty) throw ApiError.badRequest('Unesite bar jednu vrstu papira.');
-      out['finishes'] = jsonEncode(finishes);
-    }
   }
 
   Future<void> deletePhotos(Row project, List<String> ids) async {
@@ -177,8 +164,7 @@ void mountAdminRoutes(Router r, Services s) {
       'studioName': s.studioName,
       'watermarkText': s.watermarkText,
       'printerEmail': s.printerEmail,
-      'defaultSizes': s.listSetting('default_sizes', defaultSizes),
-      'defaultFinishes': s.listSetting('default_finishes', defaultFinishes),
+      'printSize': s.printSize,
       'smtpEnabled': s.mailer.enabled,
       'adminEmail': s.config.adminEmail,
       'drive': {'connected': s.drive.connected, 'email': s.drive.connectedEmail},
@@ -210,10 +196,13 @@ void mountAdminRoutes(Router r, Services s) {
       if (e.isNotEmpty && !_emailPattern.hasMatch(e)) throw ApiError.badRequest('Mejl štamparije nije ispravan.');
       db.setSetting('printer_email', e);
     }
-    final sizes = stringList(b, 'defaultSizes');
-    if (sizes != null && sizes.isNotEmpty) db.setSetting('default_sizes', jsonEncode(sizes));
-    final finishes = stringList(b, 'defaultFinishes');
-    if (finishes != null && finishes.isNotEmpty) db.setSetting('default_finishes', jsonEncode(finishes));
+    if (b.containsKey('printSize')) {
+      final size = str(b, 'printSize', max: 20) ?? '';
+      if (size.isNotEmpty && !RegExp(r'^\d{1,3}\s*[xX×]\s*\d{1,3}$').hasMatch(size)) {
+        throw ApiError.badRequest('Format štampe upišite kao npr. 13x18.');
+      }
+      db.setSetting('print_size', size.replaceAll(RegExp(r'\s'), '').replaceAll(RegExp('[X×]'), 'x'));
+    }
     db.audit('settings_updated', ip: s.ip(req));
     return jsonOk({'ok': true});
   });
@@ -303,10 +292,7 @@ void mountAdminRoutes(Router r, Services s) {
 
   r.post('/api/admin/projects', (Request req) async {
     final b = await readJson(req);
-    final fields = <String, Object?>{
-      'sizes': jsonEncode(s.listSetting('default_sizes', defaultSizes)),
-      'finishes': jsonEncode(s.listSetting('default_finishes', defaultFinishes)),
-    };
+    final fields = <String, Object?>{};
     applyProjectFields(b, fields, creating: true);
     final id = randomId();
     final token = randomToken(24);
@@ -521,7 +507,7 @@ void mountAdminRoutes(Router r, Services s) {
   }
 
   List<Row> orderItems(String orderId) => db.query(
-        '''SELECT i.photo_id, i.quantity, i.size, i.finish, p.filename, p.width, p.height, p.drive_file_id, p.mime
+        '''SELECT i.photo_id, i.quantity, p.filename, p.width, p.height, p.drive_file_id, p.mime, p.size_bytes
            FROM order_items i JOIN photos p ON p.id = i.photo_id
            WHERE i.order_id = ? ORDER BY p.sort_index''',
         [orderId],
@@ -537,8 +523,6 @@ void mountAdminRoutes(Router r, Services s) {
             'photoId': i['photo_id'],
             'filename': i['filename'],
             'quantity': i['quantity'],
-            'size': i['size'],
-            'finish': i['finish'],
             'w': i['width'],
             'h': i['height'],
           },
@@ -570,7 +554,7 @@ void mountAdminRoutes(Router r, Services s) {
       for (final i in orderItems(id)) {...i, 'customer': customer},
     ];
     return zipResponse(s, '${safeFilename('${o['project_title']} - $customer')}.zip', items,
-        header: '${o['project_title']} — $customer');
+        printSize: s.printSize, header: '${o['project_title']} — $customer');
   });
 
   // ---------------------------------------------------------------------------
@@ -596,15 +580,17 @@ void mountAdminRoutes(Router r, Services s) {
       'sentTo': l['sent_to'],
       'photoCount': agg['n'],
       'copies': agg['copies'],
+      'printSize': l['print_size'],
     };
   }
 
   Map<String, String> mailFor(Row l) {
     final items = db.query(
-      'SELECT i.*, p.filename FROM print_link_items i JOIN photos p ON p.id = i.photo_id WHERE i.print_link_id = ?',
+      'SELECT i.*, p.filename, p.size_bytes FROM print_link_items i JOIN photos p ON p.id = i.photo_id WHERE i.print_link_id = ?',
       [l['id']],
     );
-    final summary = printSummaryText(groupPrintItems(items));
+    final stats = printSummary(items);
+    final summary = printSummaryText(stats, l['print_size'] as String);
     final url = s.printUrl(s.decryptOrNull(l['token_enc'] as String) ?? '');
     final exp = DateTime.fromMillisecondsSinceEpoch(l['expires_at'] as int);
     final date = '${exp.day}.${exp.month}.${exp.year}.';
@@ -614,7 +600,7 @@ void mountAdminRoutes(Router r, Services s) {
       'body': 'Pozdrav,\n\n'
           'šaljem novu porudžbinu za štampu: ${l['label']}\n\n'
           '$summary\n'
-          'Sve fotografije (originali, raspoređeni po veličini i papiru) možete pregledati i preuzeti ovde:\n'
+          'Sve fotografije u punoj rezoluciji (${formatSize(stats['totalBytes'] as int)}) preuzimate jednim klikom ovde:\n'
           '$url\n\n'
           'Link važi do $date\n\n'
           'Hvala!\n${s.studioName}',
@@ -644,14 +630,14 @@ void mountAdminRoutes(Router r, Services s) {
     final id = randomId();
     db.tx(() {
       db.exec(
-        'INSERT INTO print_links(id, token_hash, token_enc, label, created_at, expires_at) VALUES(?, ?, ?, ?, ?, ?)',
-        [id, sha256Hex(token), s.box.encrypt(token), label, now.millisecondsSinceEpoch, now.add(Duration(days: days)).millisecondsSinceEpoch],
+        'INSERT INTO print_links(id, token_hash, token_enc, label, print_size, created_at, expires_at) VALUES(?, ?, ?, ?, ?, ?, ?)',
+        [id, sha256Hex(token), s.box.encrypt(token), label, s.printSize, now.millisecondsSinceEpoch, now.add(Duration(days: days)).millisecondsSinceEpoch],
       );
       for (final o in orders) {
         db.exec('INSERT INTO print_link_orders(print_link_id, order_id) VALUES(?, ?)', [id, o['id']]);
         db.exec(
-          'INSERT INTO print_link_items(print_link_id, photo_id, quantity, size, finish, customer) '
-          'SELECT ?, photo_id, quantity, size, finish, ? FROM order_items WHERE order_id = ?',
+          'INSERT INTO print_link_items(print_link_id, photo_id, quantity, customer) '
+          'SELECT ?, photo_id, quantity, ? FROM order_items WHERE order_id = ?',
           [id, o['name'], o['id']],
         );
         if (o['status'] == 'submitted') {

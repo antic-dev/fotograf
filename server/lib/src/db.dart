@@ -136,8 +136,6 @@ CREATE TABLE projects(
   max_photos INTEGER,
   deadline INTEGER,
   watermark INTEGER NOT NULL DEFAULT 1,
-  sizes TEXT NOT NULL,
-  finishes TEXT NOT NULL,
   cover_photo_id TEXT,
   drive_folder_id TEXT,
   created_at INTEGER NOT NULL,
@@ -178,8 +176,6 @@ CREATE TABLE order_items(
   order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
   photo_id TEXT NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
   quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 99),
-  size TEXT NOT NULL,
-  finish TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   PRIMARY KEY(order_id, photo_id)
 );
@@ -189,6 +185,7 @@ CREATE TABLE print_links(
   token_hash TEXT NOT NULL UNIQUE,
   token_enc TEXT NOT NULL,
   label TEXT NOT NULL,
+  print_size TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL,
   revoked INTEGER NOT NULL DEFAULT 0,
@@ -202,8 +199,6 @@ CREATE TABLE print_link_items(
   print_link_id TEXT NOT NULL REFERENCES print_links(id) ON DELETE CASCADE,
   photo_id TEXT NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
   quantity INTEGER NOT NULL,
-  size TEXT NOT NULL,
-  finish TEXT NOT NULL,
   customer TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX print_link_items_link ON print_link_items(print_link_id);

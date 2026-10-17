@@ -116,6 +116,12 @@ String clientIp(Request req, {required bool trustProxy}) {
 
 int nowMs() => DateTime.now().millisecondsSinceEpoch;
 
+String formatSize(int bytes) {
+  if (bytes >= 1 << 30) return '${(bytes / (1 << 30)).toStringAsFixed(1)} GB';
+  if (bytes >= 1 << 20) return '${(bytes / (1 << 20)).toStringAsFixed(0)} MB';
+  return '${(bytes / 1024).ceil()} KB';
+}
+
 /// Bezbedno ime fajla za Content-Disposition i ZIP.
 String safeFilename(String name) {
   var n = name.replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_').trim();

@@ -99,24 +99,20 @@ class ClientController extends ChangeNotifier {
     if (max != null && selectedCount >= max) {
       return 'Možete izabrati najviše $max fotografija. Ako želite ovu, prvo uklonite neku drugu.';
     }
-    final p = project!;
-    _items[photoId] = OrderItem(photoId: photoId, quantity: 1, size: p.sizes.first, finish: p.finishes.first);
+    _items[photoId] = OrderItem(photoId: photoId, quantity: 1);
     _order.add(photoId);
     notifyListeners();
     _sync(photoId, () => _api.put('$_base/selection/$photoId'));
     return null;
   }
 
-  void updateItem(String photoId, {int? quantity, String? size, String? finish}) {
+  /// Menja broj primeraka (1–99). Format je isti za sve fotografije.
+  void setQuantity(String photoId, int quantity) {
     final current = _items[photoId];
-    if (current == null || !canEdit) return;
-    _items[photoId] = current.copyWith(quantity: quantity, size: size, finish: finish);
+    if (current == null || !canEdit || quantity < 1 || quantity > 99) return;
+    _items[photoId] = current.copyWith(quantity: quantity);
     notifyListeners();
-    _sync(photoId, () => _api.put('$_base/selection/$photoId', {
-          'quantity': ?quantity,
-          'size': ?size,
-          'finish': ?finish,
-        }));
+    _sync(photoId, () => _api.put('$_base/selection/$photoId', {'quantity': quantity}));
   }
 
   /// Greške pri čuvanju se prijavljuju preko ovog callback-a.

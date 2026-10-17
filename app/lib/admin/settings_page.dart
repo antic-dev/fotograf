@@ -23,8 +23,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final _studio = TextEditingController();
   final _watermark = TextEditingController();
   final _printer = TextEditingController();
-  final _sizes = TextEditingController();
-  final _finishes = TextEditingController();
+  final _printSize = TextEditingController();
   bool _saving = false;
   List<Map<String, dynamic>>? _audit;
 
@@ -46,7 +45,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
-    for (final c in [_studio, _watermark, _printer, _sizes, _finishes]) {
+    for (final c in [_studio, _watermark, _printer, _printSize]) {
       c.dispose();
     }
     super.dispose();
@@ -62,15 +61,12 @@ class _SettingsPageState extends State<SettingsPage> {
         _studio.text = s.studioName;
         _watermark.text = s.watermarkText;
         _printer.text = s.printerEmail;
-        _sizes.text = s.defaultSizes.join(', ');
-        _finishes.text = s.defaultFinishes.join(', ');
+        _printSize.text = s.printSize;
       });
     } catch (e) {
       if (mounted) setState(() => _error = e);
     }
   }
-
-  List<String> _split(String s) => s.split(',').map((x) => x.trim()).where((x) => x.isNotEmpty).toList();
 
   Future<void> _save() async {
     setState(() => _saving = true);
@@ -79,8 +75,7 @@ class _SettingsPageState extends State<SettingsPage> {
         'studioName': _studio.text.trim(),
         'watermarkText': _watermark.text.trim(),
         'printerEmail': _printer.text.trim(),
-        'defaultSizes': _split(_sizes.text),
-        'defaultFinishes': _split(_finishes.text),
+        'printSize': _printSize.text.trim(),
       });
       AdminAuth.instance.studioName = _studio.text.trim();
       if (mounted) showMessage(context, 'Podešavanja su sačuvana.');
@@ -211,9 +206,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 style: t.bodySmall,
               ),
               const SizedBox(height: 14),
-              TextField(controller: _sizes, decoration: const InputDecoration(labelText: 'Podrazumevane veličine (zarezom)', hintText: '10x15, 13x18, 20x30')),
-              const SizedBox(height: 14),
-              TextField(controller: _finishes, decoration: const InputDecoration(labelText: 'Podrazumevani papir (zarezom)', hintText: 'Sjajni, Mat')),
+              TextField(
+                controller: _printSize,
+                decoration: const InputDecoration(
+                  labelText: 'Format štampe (cm)',
+                  hintText: '13x18',
+                  helperText: 'Isti za sve fotografije. Klijenti biraju samo broj primeraka.',
+                ),
+              ),
             ]),
             const SizedBox(height: 16),
             FilledButton(

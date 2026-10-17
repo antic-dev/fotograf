@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:shelf/shelf.dart';
@@ -17,8 +16,8 @@ const adminSessionAbsolute = Duration(hours: 12);
 const adminSessionIdle = Duration(hours: 4);
 const visitorCookieAge = Duration(days: 400);
 
-const defaultSizes = ['10x15', '13x18', '15x21', '20x30'];
-const defaultFinishes = ['Sjajni', 'Mat'];
+/// Svi klijenti dobijaju isti format; menja se samo broj primeraka.
+const defaultPrintSize = '13x18';
 
 /// Svi deljeni servisi aplikacije na jednom mestu.
 class Services {
@@ -67,10 +66,10 @@ class Services {
   }
   String get printerEmail => db.setting('printer_email') ?? '';
 
-  List<String> listSetting(String key, List<String> fallback) {
-    final raw = db.setting(key);
-    if (raw == null) return fallback;
-    return (jsonDecode(raw) as List).cast<String>();
+  /// Format štampe (npr. "13x18") — isti za sve fotografije i sve klijente.
+  String get printSize {
+    final v = (db.setting('print_size') ?? '').trim();
+    return v.isEmpty ? defaultPrintSize : v;
   }
 
   // ---------------------------------------------------------------------------

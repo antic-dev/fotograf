@@ -23,26 +23,17 @@ class Photo {
 }
 
 class OrderItem {
-  OrderItem({required this.photoId, required this.quantity, required this.size, required this.finish});
+  OrderItem({required this.photoId, required this.quantity});
 
   factory OrderItem.fromJson(Map<String, dynamic> j) => OrderItem(
         photoId: j['photoId'] as String,
         quantity: j['quantity'] as int,
-        size: j['size'] as String,
-        finish: j['finish'] as String,
       );
 
   final String photoId;
   final int quantity;
-  final String size;
-  final String finish;
 
-  OrderItem copyWith({int? quantity, String? size, String? finish}) => OrderItem(
-        photoId: photoId,
-        quantity: quantity ?? this.quantity,
-        size: size ?? this.size,
-        finish: finish ?? this.finish,
-      );
+  OrderItem copyWith({int? quantity}) => OrderItem(photoId: photoId, quantity: quantity ?? this.quantity);
 }
 
 /// Izbor klijenta u jednom projektu.
@@ -78,8 +69,7 @@ class ClientProject {
     required this.canSelect,
     required this.maxPhotos,
     required this.deadline,
-    required this.sizes,
-    required this.finishes,
+    required this.printSize,
     required this.coverPhotoId,
   });
 
@@ -92,8 +82,7 @@ class ClientProject {
         canSelect: j['canSelect'] as bool? ?? false,
         maxPhotos: j['maxPhotos'] as int?,
         deadline: j['deadline'] as int?,
-        sizes: _strings(j['sizes']),
-        finishes: _strings(j['finishes']),
+        printSize: j['printSize'] as String? ?? '13x18',
         coverPhotoId: j['coverPhotoId'] as String?,
       );
 
@@ -105,8 +94,9 @@ class ClientProject {
   final bool canSelect;
   final int? maxPhotos;
   final int? deadline;
-  final List<String> sizes;
-  final List<String> finishes;
+
+  /// Jedan format za sve fotografije (npr. "13x18").
+  final String printSize;
   final String? coverPhotoId;
 }
 
@@ -120,9 +110,6 @@ class Project {
     required this.status,
     required this.maxPhotos,
     required this.deadline,
-    required this.watermark,
-    required this.sizes,
-    required this.finishes,
     required this.coverPhotoId,
     required this.driveFolderUrl,
     required this.shareUrl,
@@ -143,9 +130,6 @@ class Project {
         status: j['status'] as String,
         maxPhotos: j['maxPhotos'] as int?,
         deadline: j['deadline'] as int?,
-        watermark: j['watermark'] as bool? ?? true,
-        sizes: _strings(j['sizes']),
-        finishes: _strings(j['finishes']),
         coverPhotoId: j['coverPhotoId'] as String?,
         driveFolderUrl: j['driveFolderUrl'] as String?,
         shareUrl: j['shareUrl'] as String,
@@ -165,9 +149,6 @@ class Project {
   final String status;
   final int? maxPhotos;
   final int? deadline;
-  final bool watermark;
-  final List<String> sizes;
-  final List<String> finishes;
   final String? coverPhotoId;
   final String? driveFolderUrl;
   final String shareUrl;
@@ -180,14 +161,12 @@ class Project {
 }
 
 class AdminOrderItem {
-  AdminOrderItem({required this.photoId, required this.filename, required this.quantity, required this.size, required this.finish, required this.w, required this.h});
+  AdminOrderItem({required this.photoId, required this.filename, required this.quantity, required this.w, required this.h});
 
   factory AdminOrderItem.fromJson(Map<String, dynamic> j) => AdminOrderItem(
         photoId: j['photoId'] as String,
         filename: j['filename'] as String,
         quantity: j['quantity'] as int,
-        size: j['size'] as String,
-        finish: j['finish'] as String,
         w: j['w'] as int? ?? 1,
         h: j['h'] as int? ?? 1,
       );
@@ -195,8 +174,6 @@ class AdminOrderItem {
   final String photoId;
   final String filename;
   final int quantity;
-  final String size;
-  final String finish;
   final int w;
   final int h;
 }
@@ -264,6 +241,7 @@ class PrintLink {
     required this.sentTo,
     required this.photoCount,
     required this.copies,
+    required this.printSize,
     required this.mailTo,
     required this.mailSubject,
     required this.mailBody,
@@ -283,6 +261,7 @@ class PrintLink {
       sentTo: j['sentTo'] as String? ?? '',
       photoCount: j['photoCount'] as int? ?? 0,
       copies: j['copies'] as int? ?? 0,
+      printSize: j['printSize'] as String? ?? '13x18',
       mailTo: mail['to'] as String? ?? '',
       mailSubject: mail['subject'] as String? ?? '',
       mailBody: mail['body'] as String? ?? '',
@@ -300,6 +279,7 @@ class PrintLink {
   final String sentTo;
   final int photoCount;
   final int copies;
+  final String printSize;
   final String mailTo;
   final String mailSubject;
   final String mailBody;
@@ -312,8 +292,7 @@ class Settings {
     required this.studioName,
     required this.watermarkText,
     required this.printerEmail,
-    required this.defaultSizes,
-    required this.defaultFinishes,
+    required this.printSize,
     required this.smtpEnabled,
     required this.adminEmail,
     required this.driveConnected,
@@ -325,8 +304,7 @@ class Settings {
         studioName: j['studioName'] as String,
         watermarkText: j['watermarkText'] as String? ?? '',
         printerEmail: j['printerEmail'] as String? ?? '',
-        defaultSizes: _strings(j['defaultSizes']),
-        defaultFinishes: _strings(j['defaultFinishes']),
+        printSize: j['printSize'] as String? ?? '13x18',
         smtpEnabled: j['smtpEnabled'] as bool? ?? false,
         adminEmail: j['adminEmail'] as String? ?? '',
         driveConnected: (j['drive'] as Map?)?['connected'] as bool? ?? false,
@@ -337,8 +315,7 @@ class Settings {
   final String studioName;
   final String watermarkText;
   final String printerEmail;
-  final List<String> defaultSizes;
-  final List<String> defaultFinishes;
+  final String printSize;
   final bool smtpEnabled;
   final String adminEmail;
   final bool driveConnected;

@@ -187,7 +187,8 @@ class _PrintLinkSheetState extends State<_PrintLinkSheet> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Štamparija preuzima originale u punoj rezoluciji direktno sa servera. Vi ništa ne skidate i ne šaljete.',
+                        'Kao WeTransfer, samo brže: štamparija jednim klikom preuzima originale u punoj rezoluciji direktno sa servera. '
+                        'Vi ništa ne skidate i ne šaljete — vaš internet se ne troši.',
                         style: t.bodyMedium,
                       ),
                     ),

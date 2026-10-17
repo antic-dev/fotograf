@@ -163,7 +163,7 @@ Future<void> main(List<String> args) async {
     final (w, h) = shapes[i % shapes.length];
     await call('POST', '/api/admin/projects/${wedding['id']}/photos?name=DSC_${(4120 + i).toString().padLeft(4, '0')}.jpg', bytes: fakePhoto(r, w, h));
   }
-  final baptism = await call('POST', '/api/admin/projects', json: {'title': 'Krštenje male Mile', 'eventDate': '2026-10-04', 'sizes': ['13x18']}) as Map;
+  final baptism = await call('POST', '/api/admin/projects', json: {'title': 'Krštenje male Mile', 'eventDate': '2026-10-04'}) as Map;
   for (var i = 0; i < 9; i++) {
     final (w, h) = shapes[(i + 1) % shapes.length];
     await call('POST', '/api/admin/projects/${baptism['id']}/photos?name=IMG_${(870 + i)}.jpg', bytes: fakePhoto(r, w, h));
@@ -176,7 +176,7 @@ Future<void> main(List<String> args) async {
   for (final i in [0, 3, 5, 8]) {
     final res = await app(Request('PUT', Uri.parse('$origin/api/s/$token/selection/${photos[i]['id']}'),
         headers: {'x-fotograf': '1', 'origin': origin, 'content-type': 'application/json', if (visitor.isNotEmpty) 'cookie': visitor},
-        body: jsonEncode({'quantity': i == 3 ? 2 : 1, 'size': i == 5 ? '20x30' : '13x18'})));
+        body: jsonEncode({'quantity': i == 3 ? 2 : 1})));
     final set = res.headers['set-cookie'];
     if (set != null) visitor = set.split(';').first;
   }

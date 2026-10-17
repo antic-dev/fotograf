@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:shelf/shelf.dart';
@@ -44,7 +43,7 @@ void mountClientRoutes(Router r, Services s) {
   Map<String, Object?> orderJson(Row? o) {
     if (o == null) return {'status': 'draft', 'name': '', 'phone': '', 'note': '', 'items': []};
     final items = s.db.query(
-      'SELECT photo_id, quantity, size, finish FROM order_items WHERE order_id = ? ORDER BY created_at',
+      'SELECT photo_id, quantity FROM order_items WHERE order_id = ? ORDER BY created_at',
       [o['id']],
     );
     return {
@@ -55,7 +54,7 @@ void mountClientRoutes(Router r, Services s) {
       'submittedAt': o['submitted_at'],
       'items': [
         for (final i in items)
-          {'photoId': i['photo_id'], 'quantity': i['quantity'], 'size': i['size'], 'finish': i['finish']},
+          {'photoId': i['photo_id'], 'quantity': i['quantity']},
       ],
     };
   }
@@ -110,8 +109,7 @@ void mountClientRoutes(Router r, Services s) {
         'canSelect': canSelect(p),
         'maxPhotos': p['max_photos'],
         'deadline': p['deadline'],
-        'sizes': jsonDecode(p['sizes'] as String),
-        'finishes': jsonDecode(p['finishes'] as String),
+        'printSize': s.printSize,
         'coverPhotoId': p['cover_photo_id'],
       },
       'photos': [
@@ -141,13 +139,8 @@ void mountClientRoutes(Router r, Services s) {
     final photo = s.db.one('SELECT id FROM photos WHERE id = ? AND project_id = ?', [photoId, p['id']]);
     if (photo == null) throw ApiError.notFound('Fotografija ne postoji.');
 
-    final sizes = (jsonDecode(p['sizes'] as String) as List).cast<String>();
-    final finishes = (jsonDecode(p['finishes'] as String) as List).cast<String>();
+    // Format je fiksan za sve; klijent bira samo broj primeraka.
     final quantity = intField(body, 'quantity', min: 1, max: 99);
-    final size = str(body, 'size', max: 40);
-    final finish = str(body, 'finish', max: 40);
-    if (size != null && !sizes.contains(size)) throw ApiError.badRequest('Nepoznata veličina.');
-    if (finish != null && !finishes.contains(finish)) throw ApiError.badRequest('Nepoznat papir.');
 
     final (:order, :cookie) = editableOrder(req, p);
     s.db.tx(() {
@@ -159,14 +152,11 @@ void mountClientRoutes(Router r, Services s) {
           throw ApiError.conflict('Možete izabrati najviše $max fotografija.');
         }
         s.db.exec(
-          'INSERT INTO order_items(order_id, photo_id, quantity, size, finish, created_at) VALUES(?, ?, ?, ?, ?, ?)',
-          [order['id'], photoId, quantity ?? 1, size ?? sizes.first, finish ?? finishes.first, nowMs()],
+          'INSERT INTO order_items(order_id, photo_id, quantity, created_at) VALUES(?, ?, ?, ?)',
+          [order['id'], photoId, quantity ?? 1, nowMs()],
         );
-      } else {
-        s.db.exec(
-          'UPDATE order_items SET quantity = ?, size = ?, finish = ? WHERE order_id = ? AND photo_id = ?',
-          [quantity ?? existing['quantity'], size ?? existing['size'], finish ?? existing['finish'], order['id'], photoId],
-        );
+      } else if (quantity != null) {
+        s.db.exec('UPDATE order_items SET quantity = ? WHERE order_id = ? AND photo_id = ?', [quantity, order['id'], photoId]);
       }
       s.db.exec('UPDATE orders SET updated_at = ? WHERE id = ?', [nowMs(), order['id']]);
     });

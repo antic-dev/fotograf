@@ -7,6 +7,7 @@ import '../api/models.dart';
 import '../ui/common.dart';
 import '../ui/theme.dart';
 import 'client_controller.dart';
+import 'quantity_stepper.dart';
 
 /// Prikaz jedne fotografije preko celog ekrana. Prevlačenje levo/desno menja
 /// fotografiju, a veliko dugme na dnu je izbor. Dugme "Nazad" u pregledaču
@@ -193,6 +194,25 @@ class _LightboxPageState extends State<LightboxPage> {
                   maxWidth: 560,
                   padding: const EdgeInsets.fromLTRB(16, 28, 16, 16),
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    // Broj primeraka se pojavljuje tek kada je fotografija izabrana.
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOut,
+                      child: c.canEdit && selected
+                          ? Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                Text('Primeraka:', style: t.titleMedium?.copyWith(color: Colors.white)),
+                                const SizedBox(width: 12),
+                                QuantityStepper(
+                                  dark: true,
+                                  value: c.item(photo.id)!.quantity,
+                                  onChanged: (q) => c.setQuantity(photo.id, q),
+                                ),
+                              ]),
+                            )
+                          : const SizedBox(width: double.infinity),
+                    ),
                     if (c.canEdit)
                       SizedBox(
                         width: double.infinity,

@@ -1,7 +1,9 @@
-# Pokretanje na serveru:  docker compose up -d --build
-# Pre toga: cp .env.example .env  i popunite vrednosti.
+# Na serveru ovaj fajl automatski postavlja GitHub Actions (.github/workflows/deploy.yml)
+# i koristi gotovu sliku iz GitHub Container Registry-ja.
+# Ručno (na serveru, iz izvornog koda):  cp .env.example .env && docker compose up -d --build
 services:
   app:
+    image: ${IMAGE:-ghcr.io/antic-dev/fotograf:latest}
     build: .
     restart: unless-stopped
     env_file: .env

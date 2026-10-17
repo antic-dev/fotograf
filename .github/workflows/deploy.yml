@@ -1,0 +1,176 @@
+name: Deploy
+
+# Svaki push na main: izgradi aplikaciju i postavi je na vaš server/domen.
+# Može i ručno: GitHub → Actions → Deploy → Run workflow.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    name: Izgradnja aplikacije
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.name.outputs.image }}:latest
+            ${{ steps.name.outputs.image }}:${{ github.sha }}
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Postavljanje na server
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Provera podešavanja
+        id: check
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          DOMAIN: ${{ secrets.DOMAIN }}
+          CID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          CSECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          PASS: ${{ secrets.DEPLOY_PASSWORD }}
+        run: |
+          missing=""
+          [ -z "$HOST" ] && missing="$missing DEPLOY_HOST"
+          [ -z "$DOMAIN" ] && missing="$missing DOMAIN"
+          [ -z "$CID" ] && missing="$missing GOOGLE_CLIENT_ID"
+          [ -z "$CSECRET" ] && missing="$missing GOOGLE_CLIENT_SECRET"
+          [ -z "$KEY$PASS" ] && missing="$missing DEPLOY_SSH_KEY/DEPLOY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::warning::Aplikacija je izgrađena, ali nije postavljena na server jer nedostaju GitHub secrets:$missing (vidi README → Postavljanje na vaš domen)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "compose=$(base64 -w0 docker-compose.yml)" >> "$GITHUB_OUTPUT"
+          echo "caddy=$(base64 -w0 deploy/Caddyfile)" >> "$GITHUB_OUTPUT"
+
+      - name: Postavljanje preko SSH
+        if: steps.check.outputs.ready == 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE: ${{ needs.image.outputs.image }}:${{ github.sha }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMPOSE_B64: ${{ steps.check.outputs.compose }}
+          CADDY_B64: ${{ steps.check.outputs.caddy }}
+          DOMAIN: ${{ secrets.DOMAIN }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          DRIVE_EMAIL: ${{ secrets.DRIVE_EMAIL }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER || 'root' }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          envs: IMAGE,GHCR_USER,GHCR_TOKEN,COMPOSE_B64,CADDY_B64,DOMAIN,ADMIN_EMAIL,DRIVE_EMAIL,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASSWORD
+          command_timeout: 20m
+          script: |
+            set -eu
+            SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+            # Dozvoljava i unos "https://foto.domen.rs/" — ostavlja samo domen.
+            DOMAIN=$(echo "$DOMAIN" | sed -e 's#^https\?://##' -e 's#/.*$##')
+
+            # 1. Docker (samo prvi put)
+            if ! command -v docker >/dev/null 2>&1; then
+              curl -fsSL https://get.docker.com | $SUDO sh
+            fi
+
+            # 2. Fajlovi aplikacije
+            $SUDO mkdir -p /opt/fotograf/deploy
+            cd /opt/fotograf
+            echo "$COMPOSE_B64" | base64 -d | $SUDO tee docker-compose.yml >/dev/null
+            echo "$CADDY_B64" | base64 -d | $SUDO tee deploy/Caddyfile >/dev/null
+
+            # 3. Tajni ključ za šifrovanje pravi se JEDNOM, na serveru, i nikad ga ne napušta.
+            if [ ! -s app_secret ]; then
+              head -c 32 /dev/urandom | base64 | $SUDO tee app_secret >/dev/null
+              $SUDO chmod 600 app_secret
+            fi
+
+            # 4. Podešavanja (.env) — vidljiva samo root korisniku
+            {
+              echo "IMAGE=$IMAGE"
+              echo "DOMAIN=$DOMAIN"
+              echo "PUBLIC_URL=https://$DOMAIN"
+              echo "ADMIN_EMAIL=${ADMIN_EMAIL:-minehost43@gmail.com}"
+              echo "DRIVE_EMAIL=${DRIVE_EMAIL:-}"
+              echo "GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID"
+              echo "GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET"
+              echo "APP_SECRET=$($SUDO cat app_secret)"
+              echo "MAX_UPLOAD_MB=80"
+              echo "SMTP_HOST=${SMTP_HOST:-}"
+              echo "SMTP_PORT=${SMTP_PORT:-587}"
+              echo "SMTP_USER=${SMTP_USER:-}"
+              echo "SMTP_PASSWORD=${SMTP_PASSWORD:-}"
+              echo "SMTP_FROM=${SMTP_USER:-}"
+            } | $SUDO tee .env >/dev/null
+            $SUDO chmod 600 .env
+
+            # 5. Zaštitni zid (ako je uključen): web saobraćaj
+            if command -v ufw >/dev/null 2>&1 && $SUDO ufw status | grep -q "Status: active"; then
+              $SUDO ufw allow 80/tcp >/dev/null; $SUDO ufw allow 443/tcp >/dev/null; $SUDO ufw allow 443/udp >/dev/null
+            fi
+
+            # 6. Nova verzija
+            echo "$GHCR_TOKEN" | $SUDO docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            $SUDO docker compose pull app
+            $SUDO docker compose up -d --no-build --remove-orphans
+            $SUDO docker logout ghcr.io
+            $SUDO docker image prune -f >/dev/null
+            echo "Postavljeno: https://$DOMAIN"
+
+      - name: Provera da sajt radi
+        if: steps.check.outputs.ready == 'true'
+        env:
+          DOMAIN: ${{ secrets.DOMAIN }}
+        run: |
+          DOMAIN=$(echo "$DOMAIN" | sed -e 's#^https\?://##' -e 's#/.*$##')
+          for i in $(seq 1 24); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://$DOMAIN/api/auth/start" || true)
+            if [ "$code" = "200" ]; then echo "Sajt radi: https://$DOMAIN"; exit 0; fi
+            sleep 10
+          done
+          echo "::warning::https://$DOMAIN još ne odgovara. Proverite da A zapis domena pokazuje na IP servera (DNS ponekad treba do sat vremena)."

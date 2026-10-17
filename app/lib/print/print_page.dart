@@ -5,8 +5,8 @@ import '../ui/common.dart';
 import '../ui/theme.dart';
 import '../web/browser.dart';
 
-/// Stranica za štampariju. Bez naloga — samo tajni link koji ističe.
-/// Sve se preuzima u punoj, originalnoj rezoluciji direktno sa servera.
+/// Stranica za štampariju — radi kao WeTransfer: jedno dugme preuzima sve
+/// originale u punoj rezoluciji. Bez naloga; tajni link ističe i može se opozvati.
 class PrintPage extends StatefulWidget {
   const PrintPage({super.key, required this.token});
   final String token;
@@ -18,6 +18,7 @@ class PrintPage extends StatefulWidget {
 class _PrintPageState extends State<PrintPage> {
   Map<String, dynamic>? _data;
   Object? _error;
+  bool _downloading = false;
 
   String get _base => '/api/print/${widget.token}';
 
@@ -37,11 +38,16 @@ class _PrintPageState extends State<PrintPage> {
     }
   }
 
+  void _downloadAll() {
+    download('$_base/zip');
+    setState(() => _downloading = true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    if (_error != null) {
-      final e = _error;
+    final e = _error;
+    if (e != null) {
       final gone = e is ApiException && (e.status == 410 || e.status == 404);
       return Scaffold(
         body: EmptyState(
@@ -54,7 +60,11 @@ class _PrintPageState extends State<PrintPage> {
     }
     final d = _data;
     if (d == null) return const Scaffold(body: LoadingView(label: 'Učitavam porudžbinu...'));
-    final groups = (d['groups'] as List).cast<Map<String, dynamic>>();
+
+    final customers = (d['customers'] as List).cast<Map<String, dynamic>>();
+    final size = (d['printSize'] as String).replaceAll('x', '×');
+    final expires = DateTime.fromMillisecondsSinceEpoch(d['expiresAt'] as int);
+    final daysLeft = expires.difference(DateTime.now()).inDays;
     final phone = isPhone(context);
 
     return Scaffold(
@@ -66,62 +76,90 @@ class _PrintPageState extends State<PrintPage> {
               bottom: false,
               child: Centered(
                 maxWidth: 1100,
-                padding: EdgeInsets.fromLTRB(20, phone ? 28 : 48, 20, phone ? 28 : 44),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                padding: EdgeInsets.fromLTRB(20, phone ? 28 : 48, 20, phone ? 28 : 48),
+                child: Column(children: [
                   Text((d['studioName'] as String).toUpperCase(), style: t.labelLarge?.copyWith(color: AppColors.gold, letterSpacing: 3, fontSize: 13)),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Text('Porudžbina za štampu', style: t.bodyLarge?.copyWith(color: Colors.white70)),
-                  Text(d['label'] as String, style: (phone ? t.headlineLarge : t.displaySmall)?.copyWith(color: Colors.white)),
-                  const SizedBox(height: 20),
-                  Wrap(spacing: 10, runSpacing: 10, children: [
-                    for (final g in groups)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)),
-                        child: Text('${g['size']} · ${g['finish']}:  ${g['copies']} kom',
-                            style: t.titleMedium?.copyWith(color: Colors.white)),
+                  const SizedBox(height: 4),
+                  Text(
+                    d['label'] as String,
+                    textAlign: TextAlign.center,
+                    style: (phone ? t.headlineLarge : t.displaySmall)?.copyWith(color: Colors.white),
+                  ),
+                  const SizedBox(height: 28),
+                  // Kartica u stilu WeTransfer-a
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(children: [
+                          Container(
+                            width: 72,
+                            height: 72,
+                            decoration: const BoxDecoration(color: AppColors.emeraldSoft, shape: BoxShape.circle),
+                            child: Icon(_downloading ? Icons.downloading_rounded : Icons.download_rounded, color: AppColors.emerald, size: 36),
+                          ),
+                          const SizedBox(height: 16),
+                          Text('${d['totalCopies']} kom · $size cm', style: t.headlineMedium?.copyWith(fontFamily: bodyFont, fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 6),
+                          Text(
+                            '${photosLabel(d['photoCount'] as int)} · ${formatBytes(d['totalBytes'] as int)}',
+                            style: t.bodyLarge?.copyWith(color: AppColors.inkSoft),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            daysLeft <= 0 ? 'Link ističe danas' : 'Link ističe za ${plural(daysLeft, 'dan', 'dana', 'dana')} (${formatDate(expires)})',
+                            style: t.bodyMedium?.copyWith(color: daysLeft <= 2 ? AppColors.danger : AppColors.inkFaint),
+                          ),
+                          const SizedBox(height: 20),
+                          FilledButton.icon(
+                            onPressed: _downloadAll,
+                            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(60)),
+                            icon: const Icon(Icons.download_rounded),
+                            label: Text(_downloading ? 'Preuzimanje je počelo' : 'Preuzmi sve (ZIP)'),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Originali u punoj rezoluciji. Ime fajla počinje brojem kopija (npr. „2x_IMG_0001.jpg”)'
+                            '${customers.length > 1 ? ', a svaki klijent ima svoj folder' : ''}. Spisak je u SPISAK.txt.',
+                            textAlign: TextAlign.center,
+                            style: t.bodySmall,
+                          ),
+                        ]),
                       ),
-                  ]),
-                  const SizedBox(height: 24),
-                  Wrap(spacing: 12, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                    FilledButton.icon(
-                      onPressed: () => download('$_base/zip'),
-                      style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: AppColors.ink, minimumSize: const Size(260, 60)),
-                      icon: const Icon(Icons.download_rounded),
-                      label: Text('Preuzmi sve (ZIP) · ${d['totalCopies']} kom'),
                     ),
-                    Text(
-                      'Originali u punoj rezoluciji, raspoređeni po veličini.\nLink važi do ${formatDateMs(d['expiresAt'] as int)}',
-                      style: t.bodyMedium?.copyWith(color: Colors.white60),
-                    ),
-                  ]),
+                  ),
                 ]),
               ),
             ),
           ),
         ),
-        for (final g in groups) ...[
+        for (final c in customers) ...[
           SliverToBoxAdapter(
             child: Centered(
               maxWidth: 1100,
               padding: const EdgeInsets.fromLTRB(20, 32, 20, 12),
               child: Row(children: [
-                Expanded(child: Text('${g['size']} cm · ${g['finish']}', style: t.headlineSmall)),
-                Pill('${g['copies']} kom', color: AppColors.emeraldDark, background: AppColors.emeraldSoft),
+                Expanded(
+                  child: Text(
+                    (c['name'] as String).isEmpty ? 'Fotografije' : c['name'] as String,
+                    style: t.headlineSmall,
+                  ),
+                ),
+                Pill('${c['copies']} kom', color: AppColors.emeraldDark, background: AppColors.emeraldSoft),
               ]),
             ),
           ),
-          SliverPadding(
-            padding: EdgeInsets.symmetric(horizontal: phone ? 12 : 20),
-            sliver: SliverToBoxAdapter(
-              child: Centered(
-                maxWidth: 1100,
-                padding: EdgeInsets.zero,
-                child: Wrap(spacing: 10, runSpacing: 10, children: [
-                  for (final it in (g['items'] as List).cast<Map<String, dynamic>>())
-                    _PrintTile(base: _base, item: it, size: phone ? (MediaQuery.sizeOf(context).width - 34) / 2 : 160),
-                ]),
-              ),
+          SliverToBoxAdapter(
+            child: Centered(
+              maxWidth: 1100,
+              padding: EdgeInsets.symmetric(horizontal: phone ? 12 : 20),
+              child: Wrap(spacing: 10, runSpacing: 10, children: [
+                for (final it in (c['items'] as List).cast<Map<String, dynamic>>())
+                  _PrintTile(base: _base, item: it, size: phone ? (MediaQuery.sizeOf(context).width - 34) / 2 : 160),
+              ]),
             ),
           ),
         ],
@@ -154,7 +192,7 @@ class _PrintTile extends StatelessWidget {
               Positioned(
                 left: 8,
                 top: 8,
-                child: Pill('${item['quantity']}×', color: Colors.white, background: AppColors.ink.withValues(alpha: 0.8)),
+                child: Pill('${item['quantity']}×', color: Colors.white, background: AppColors.ink.withValues(alpha: 0.85)),
               ),
               Positioned(
                 right: 4,
@@ -171,8 +209,6 @@ class _PrintTile extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(item['filename'] as String, style: t.bodySmall, overflow: TextOverflow.ellipsis),
-        if ((item['customer'] as String? ?? '').isNotEmpty)
-          Text(item['customer'] as String, style: t.bodySmall?.copyWith(color: AppColors.inkFaint), overflow: TextOverflow.ellipsis),
       ]),
     );
   }

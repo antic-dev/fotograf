@@ -102,8 +102,6 @@ void main() {
         'clientName': 'Ana',
         'eventDate': '2026-06-14',
         'maxPhotos': 2,
-        'sizes': ['13x18', '20x30'],
-        'finishes': ['Sjajni', 'Mat'],
       });
       expect(res.status, 201, reason: res.text);
       final project = res.json as Map<String, dynamic>;
@@ -152,12 +150,15 @@ void main() {
       res = await app.call('PUT', '/api/s/$token/selection/${ids[0]}', json: {});
       expect(res.status, 200, reason: res.text);
       expect(app.cookies.keys.any((k) => k.contains('fv')), isTrue);
-      res = await app.call('PUT', '/api/s/$token/selection/${ids[1]}', json: {'quantity': 3, 'size': '20x30', 'finish': 'Mat'});
+      res = await app.call('PUT', '/api/s/$token/selection/${ids[1]}', json: {'quantity': 3});
       expect(res.status, 200);
       res = await app.call('PUT', '/api/s/$token/selection/${ids[2]}', json: {});
       expect(res.status, 409, reason: 'maksimalno 2 fotografije');
-      res = await app.call('PUT', '/api/s/$token/selection/${ids[0]}', json: {'size': 'A0'});
-      expect(res.status, 400);
+      res = await app.call('PUT', '/api/s/$token/selection/${ids[0]}', json: {'quantity': 0});
+      expect(res.status, 400, reason: 'količina mora biti 1-99');
+      res = await app.call('GET', '/api/s/$token');
+      expect(res.json['project']['printSize'], '13x18');
+      expect((res.json['order']['items'] as List).map((i) => i['quantity']), [1, 3]);
 
       // Drugi posetilac ima svoj, odvojen izbor
       final firstVisitor = Map.of(app.cookies);
@@ -204,7 +205,8 @@ void main() {
       expect(res.status, 201, reason: res.text);
       final printUrl = res.json['url'] as String;
       expect(res.json['mail']['body'], contains(printUrl));
-      expect(res.json['mail']['body'], contains('20x30 — Mat: 3 kom'));
+      expect(res.json['mail']['body'], contains('Format: 13x18 cm'));
+      expect(res.json['mail']['body'], contains('Ukupno: 4 kom'));
       final printToken = printUrl.split('/stampa/').last;
       res = await app.call('GET', '/api/admin/orders/$orderId');
       expect(res.json['status'], 'printing');
@@ -219,7 +221,10 @@ void main() {
       res = await app.call('GET', '/api/print/$printToken');
       expect(res.status, 200);
       expect(res.json['totalCopies'], 4);
-      expect(res.json['groups'], hasLength(2));
+      expect(res.json['printSize'], '13x18');
+      expect(res.json['photoCount'], 2);
+      expect(res.json['totalBytes'], greaterThan(0));
+      expect(res.json['customers'], hasLength(1));
       res = await app.call('GET', '/api/print/$printToken/photos/${ids[1]}/original');
       expect(res.status, 200);
       expect(res.headers['content-disposition'], contains('IMG_0001.jpg'));
@@ -237,8 +242,8 @@ void main() {
       expect(check.exitCode, 0, reason: check.stderr.toString());
       final names = check.stdout.toString().trim().split('\n');
       expect(names, contains('SPISAK.txt'));
-      expect(names, contains('13x18 Sjajni/1x_Ana Petrović_IMG_0000.jpg'));
-      expect(names, contains('20x30 Mat/3x_Ana Petrović_IMG_0001.jpg'));
+      expect(names, contains('1x_IMG_0000.jpg'));
+      expect(names, contains('3x_IMG_0001.jpg'));
 
       // 9. Opoziv linka
       await app.loginAsAdmin();

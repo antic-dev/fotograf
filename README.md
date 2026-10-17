@@ -27,10 +27,16 @@ pošaljete štampariji link sa **originalima u punoj rezoluciji**.
                                                                         originali, po veličinama
 ```
 
-**Vaš internet se ne troši pri slanju štampariji**: štamparija preuzima originale direktno
-sa servera (koji ih čita sa vašeg Drive-a). Ne morate ništa da skidate i ponovo šaljete,
-kao kod WeTransfer-a. ZIP je raspoređen u foldere po veličini i papiru, a ime svakog fajla
-počinje brojem kopija (`2x_Ana Petrović_DSC_4120.jpg`), uz `SPISAK.txt`.
+**Kao WeTransfer, ali bez skidanja i ponovnog slanja**: štamparija dobije link (mejlom ili
+Viberom), vidi veličinu paketa i rok, i jednim klikom preuzme ZIP sa **originalima u punoj
+rezoluciji** direktno sa servera (koji ih čita sa vašeg Drive-a). Vaš internet se ne troši.
+Ime svakog fajla počinje brojem kopija (`2x_DSC_4120.jpg`); ako je u paketu više klijenata,
+svako ima svoj folder; uz to ide `SPISAK.txt`.
+
+> **Zašto ne pravi WeTransfer?** WeTransfer je ugasio javni API za programere (nema više
+> ključeva), pa nijedna aplikacija ne može automatski da šalje preko njega. Ručno slanje bi
+> značilo da prvo skinete sve fotografije pa ih ponovo otpremite — upravo ono što ovaj link
+> izbegava.
 
 ---
 
@@ -41,7 +47,9 @@ počinje brojem kopija (`2x_Ana Petrović_DSC_4120.jpg`), uz `SPISAK.txt`.
 - Dodir na samu fotografiju = prikaz preko celog ekrana, prevlačenje za sledeću,
   i veliko dugme **„Izaberi ovu fotografiju”**.
 - Sve se **čuva samo od sebe** (može da zatvori stranicu i nastavi kasnije).
-- Veliko zeleno dugme **„Dalje”** → broj primeraka, veličina, papir → ime → **„Pošalji”**.
+- Svi dobijaju isti format (**13x18**, menja se u Podešavanjima) — klijent bira samo
+  **broj primeraka** (veliki − / + odmah ispod izabrane fotografije).
+- Veliko zeleno dugme **„Dalje”** → provera → ime → **„Pošalji”**.
 - Dugme **„Pomoć”** sa objašnjenjima običnim jezikom; uputstvo u 3 koraka stoji na vrhu.
 - Može da izmeni izbor dok vi ne pošaljete na štampu.
 - Na istom linku može da bira više ljudi (npr. gosti na venčanju) — svako ima svoj izbor.
@@ -52,8 +60,8 @@ počinje brojem kopija (`2x_Ana Petrović_DSC_4120.jpg`), uz `SPISAK.txt`.
 - **Projekti**: naslovna fotografija, tajni link, QR kod, „Pošalji klijentu”,
   otpremanje prevlačenjem (na računaru) ili izborom iz galerije (na telefonu),
   brisanje, naslovna, redosled po vremenu snimanja, broj klijenata koji su izabrali sliku (♥).
-- **Pravila po projektu**: najviše N fotografija, rok za izbor, veličine (10x15, 13x18...),
-  vrste papira, status (otvoren / samo pregled / skriven).
+- **Pravila po projektu**: najviše N fotografija, rok za izbor, status
+  (otvoren / samo pregled / skriven).
 - **Porudžbine**: nove su unapred označene → jedan dodir „Pošalji štampariji”.
 - **Štamparija**: istorija linkova, koliko puta je otvoren, opoziv u svakom trenutku.
 - Otpremanje radi u pozadini, 2 fotografije paralelno (dobro za sporiji internet),
@@ -101,21 +109,50 @@ počinje brojem kopija (`2x_Ana Petrović_DSC_4120.jpg`), uz `SPISAK.txt`.
    - **Authorized redirect URIs**: `https://foto.vasdomen.rs/api/admin/drive/callback`
    - Kopirajte **Client ID** i **Client secret**.
 
-### 2. Server
+### 2. Postavljanje na vaš domen (bez kucanja komandi)
 
-Bilo koji Linux VPS sa Docker-om (npr. Hetzner ~4 €/mes, ili kredit iz GitHub Student
-Pack-a za DigitalOcean/Azure). Domen (GitHub Student Pack daje besplatan `.me`/`.tech`)
-usmerite **A zapisom** na IP servera.
+Aplikaciju ne pokrećete kod sebe — ona radi na **serveru**, na **vašem domenu**
+(npr. `https://foto.vasdomen.rs`). GitHub je sam izgradi i postavi posle svake izmene.
 
-```bash
-git clone https://github.com/antic-dev/fotograf.git && cd fotograf
-cp .env.example .env
-openssl rand -base64 32        # nalepite rezultat kao APP_SECRET u .env
-nano .env                      # DOMAIN, PUBLIC_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
-docker compose up -d --build
-```
+**a) Server (VPS).** Aplikaciji treba mali Linux server (Ubuntu 24.04, 2 GB RAM je dovoljno):
+- [Hetzner Cloud](https://www.hetzner.com/cloud) CX22 (~4 €/mes, 20 TB saobraćaja), ili
+- DigitalOcean — sa **GitHub Student Pack-om** dobijate 200 $ kredita.
 
-Caddy automatski dobija HTTPS sertifikat. Gotovo!
+Pri pravljenju servera izaberite **Ubuntu 24.04** i zapamtite **IP adresu** i **root lozinku**
+(ili dodajte svoj SSH ključ).
+
+> Ako vam je domen/sajt na običnom hostingu (cPanel), sajt ostaje tamo — samo dodajete
+> poddomen (npr. `foto.`) koji pokazuje na novi server. Običan PHP hosting ne može da pokreće
+> ovu aplikaciju.
+
+**b) DNS.** Kod registra domena (gde ste kupili domen) dodajte **A zapis**:
+
+| Tip | Ime | Vrednost |
+|---|---|---|
+| A | `foto` | IP adresa servera |
+
+**c) GitHub secrets.** U repozitorijumu: **Settings → Secrets and variables → Actions →
+New repository secret**, dodajte:
+
+| Ime | Vrednost |
+|---|---|
+| `DEPLOY_HOST` | IP adresa servera |
+| `DEPLOY_PASSWORD` | root lozinka servera *(ili `DEPLOY_SSH_KEY` — privatni SSH ključ)* |
+| `DOMAIN` | `foto.vasdomen.rs` |
+| `GOOGLE_CLIENT_ID` | iz koraka 1 |
+| `GOOGLE_CLIENT_SECRET` | iz koraka 1 |
+| `DRIVE_EMAIL` | *(opciono)* nalog sa 5 TB, ako nije `minehost43@gmail.com` |
+| `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` | *(opciono)* za mejl štampariji jednim dodirom |
+| `DEPLOY_USER` | *(opciono)* korisnik na serveru, podrazumevano `root` |
+
+**d) Pokretanje.** GitHub → **Actions → Deploy → Run workflow → Run workflow**.
+Za ~10 minuta aplikacija radi na `https://foto.vasdomen.rs` — HTTPS sertifikat se dobija
+automatski. Posle toga se svaka izmena na grani `main` postavlja sama (a ručno pokretanje
+uvek radi). Ako nešto nije podešeno, Actions jasno napiše šta nedostaje.
+
+Šta deploy radi na serveru: instalira Docker (prvi put), postavlja aplikaciju u `/opt/fotograf`,
+pravi tajni ključ za šifrovanje **na samom serveru** (nikad ne napušta server) i pokreće
+aplikaciju + Caddy (HTTPS). Podaci i baza ostaju između verzija.
 
 ### 3. Prvo pokretanje
 

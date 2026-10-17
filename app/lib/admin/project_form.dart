@@ -44,11 +44,8 @@ class _ProjectFormState extends State<_ProjectForm> {
   late final _max = TextEditingController(text: widget.existing?.maxPhotos?.toString());
   DateTime? _date;
   DateTime? _deadline;
-  List<String> _sizes = [];
-  List<String> _finishes = [];
   String _status = 'open';
   bool _busy = false;
-  bool _loadingDefaults = false;
 
   bool get _editing => widget.existing != null;
 
@@ -59,30 +56,9 @@ class _ProjectFormState extends State<_ProjectForm> {
     if (p != null) {
       _date = p.eventDate == null ? null : DateTime.tryParse(p.eventDate!);
       _deadline = p.deadline == null ? null : DateTime.fromMillisecondsSinceEpoch(p.deadline!);
-      _sizes = [...p.sizes];
-      _finishes = [...p.finishes];
       _status = p.status;
     } else {
       _date = DateTime.now();
-      _loadingDefaults = true;
-      Api.instance.get('/api/admin/settings').then((d) {
-        final s = Settings.fromJson(d as Map<String, dynamic>);
-        if (mounted) {
-          setState(() {
-            _sizes = s.defaultSizes;
-            _finishes = s.defaultFinishes;
-            _loadingDefaults = false;
-          });
-        }
-      }).catchError((_) {
-        if (mounted) {
-          setState(() {
-            _sizes = ['10x15', '13x18', '15x21', '20x30'];
-            _finishes = ['Sjajni', 'Mat'];
-            _loadingDefaults = false;
-          });
-        }
-      });
     }
   }
 
@@ -106,10 +82,6 @@ class _ProjectFormState extends State<_ProjectForm> {
 
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
-    if (_sizes.isEmpty || _finishes.isEmpty) {
-      showMessage(context, 'Dodajte bar jednu veličinu i jednu vrstu papira.', error: true);
-      return;
-    }
     setState(() => _busy = true);
     final max = int.tryParse(_max.text.trim());
     final body = {
@@ -119,8 +91,6 @@ class _ProjectFormState extends State<_ProjectForm> {
       'eventDate': _date == null ? null : _iso(_date!),
       'maxPhotos': max,
       'deadline': _deadline == null ? null : DateTime(_deadline!.year, _deadline!.month, _deadline!.day, 23, 59, 59).millisecondsSinceEpoch,
-      'sizes': _sizes,
-      'finishes': _finishes,
       if (_editing) 'status': _status,
     };
     try {
@@ -140,7 +110,7 @@ class _ProjectFormState extends State<_ProjectForm> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final save = FilledButton(
-      onPressed: _busy || _loadingDefaults ? null : _save,
+      onPressed: _busy ? null : _save,
       child: _busy
           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
           : Text(_editing ? 'Sačuvaj' : 'Napravi projekat'),
@@ -214,13 +184,6 @@ class _ProjectFormState extends State<_ProjectForm> {
             onClear: () => setState(() => _deadline = null),
           ),
           const SizedBox(height: 20),
-          _ChipEditor(label: 'Veličine fotografija (cm)', values: _sizes, hint: 'npr. 30x40', onChanged: (v) => setState(() => _sizes = v)),
-          const SizedBox(height: 16),
-          _ChipEditor(label: 'Vrsta papira', values: _finishes, hint: 'npr. Svileni', onChanged: (v) => setState(() => _finishes = v)),
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text('Prva vrednost je podrazumevana. Ako ostavite samo jednu, klijent ne mora ništa da bira.', style: t.bodySmall),
-          ),
           if (_editing) ...[
             const SizedBox(height: 24),
             Text('Status', style: t.titleLarge),
@@ -255,7 +218,8 @@ class _ProjectFormState extends State<_ProjectForm> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Klijenti uvek vide fotografije sa vodenim žigom i u smanjenoj rezoluciji. Originali ostaju samo na vašem Drive-u.',
+                  'Klijenti biraju samo fotografije i broj primeraka — format štampe je isti za sve (menja se u Podešavanjima). '
+                  'Uvek vide fotografije sa vodenim žigom i u smanjenoj rezoluciji; originali ostaju samo na vašem Drive-u.',
                   style: t.bodyMedium,
                 ),
               ),
@@ -317,66 +281,5 @@ class _DateField extends StatelessWidget {
         child: Text(value == null ? 'Nije izabrano' : formatDate(value!), style: Theme.of(context).textTheme.bodyLarge),
       ),
     );
-  }
-}
-
-class _ChipEditor extends StatefulWidget {
-  const _ChipEditor({required this.label, required this.values, required this.hint, required this.onChanged});
-  final String label;
-  final List<String> values;
-  final String hint;
-  final ValueChanged<List<String>> onChanged;
-
-  @override
-  State<_ChipEditor> createState() => _ChipEditorState();
-}
-
-class _ChipEditorState extends State<_ChipEditor> {
-  final _ctrl = TextEditingController();
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _add() {
-    final v = _ctrl.text.trim();
-    if (v.isEmpty || widget.values.contains(v)) return;
-    widget.onChanged([...widget.values, v]);
-    _ctrl.clear();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(widget.label, style: t.titleSmall),
-      const SizedBox(height: 8),
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        for (final (i, v) in widget.values.indexed)
-          InputChip(
-            label: Text(v),
-            avatar: i == 0 ? const Icon(Icons.star_rounded, size: 18, color: AppColors.gold) : null,
-            onPressed: i == 0
-                ? null
-                : () => widget.onChanged([v, ...widget.values.where((x) => x != v)]),
-            tooltip: i == 0 ? 'Podrazumevano' : 'Postavi kao podrazumevano',
-            onDeleted: () => widget.onChanged(widget.values.where((x) => x != v).toList()),
-          ),
-      ]),
-      const SizedBox(height: 10),
-      Row(children: [
-        Expanded(
-          child: TextField(
-            controller: _ctrl,
-            onSubmitted: (_) => _add(),
-            decoration: InputDecoration(hintText: widget.hint, isDense: true),
-          ),
-        ),
-        const SizedBox(width: 8),
-        IconButton.filledTonal(onPressed: _add, icon: const Icon(Icons.add_rounded)),
-      ]),
-    ]);
   }
 }

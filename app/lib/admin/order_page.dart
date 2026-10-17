@@ -67,10 +67,6 @@ class _OrderPageState extends State<OrderPage> {
     }
     final t = Theme.of(context).textTheme;
     final phone = isPhone(context);
-    final groups = <String, int>{};
-    for (final i in o.items) {
-      groups['${i.size} · ${i.finish}'] = (groups['${i.size} · ${i.finish}'] ?? 0) + i.quantity;
-    }
 
     return Scaffold(
       appBar: AppBar(
@@ -138,7 +134,6 @@ class _OrderPageState extends State<OrderPage> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('${photosLabel(o.photoCount)} · ${copiesLabel(o.copies)}', style: t.titleLarge?.copyWith(color: AppColors.emeraldDark)),
                 const SizedBox(height: 6),
-                for (final e in groups.entries) Text('${e.key}:  ${e.value} kom', style: t.bodyLarge?.copyWith(color: AppColors.emeraldDark)),
               ]),
             ),
             const SizedBox(height: 20),
@@ -161,7 +156,7 @@ class _OrderPageState extends State<OrderPage> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Text('${i.size} · ${i.finish}', style: t.titleSmall),
+                      Text(copiesLabel(i.quantity), style: t.titleSmall),
                       Text(i.filename, style: t.bodySmall, overflow: TextOverflow.ellipsis),
                     ]),
                   ),

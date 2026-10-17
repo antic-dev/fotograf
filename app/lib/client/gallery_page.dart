@@ -435,6 +435,12 @@ class _Tile extends StatelessWidget {
             borderRadius: BorderRadius.circular(selected ? 4 : 6),
             child: Stack(fit: StackFit.expand, children: [
               Hero(tag: 'photo-${photo.id}', child: NetImage(c.thumbUrl(photo.id))),
+              if (selected && c.item(photo.id)!.quantity > 1)
+                Positioned(
+                  left: 6,
+                  bottom: 6,
+                  child: Pill('${c.item(photo.id)!.quantity} kom', color: Colors.white, background: AppColors.emerald),
+                ),
               if (c.canEdit || selected)
                 Positioned(
                   top: 0,

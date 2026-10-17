@@ -32,7 +32,7 @@ void showHelpSheet(BuildContext context) {
             q('Pogrešno sam izabrao/la. Šta sada?', 'Samo ponovo dodirnite zeleni krug — fotografija više nije izabrana.'),
             q('Da li moram nešto da sačuvam?', 'Ne. Sve se čuva samo od sebe. Možete zatvoriti stranicu i kasnije nastaviti na istom telefonu.'),
             q('Kako da pošaljem izbor?', 'Pritisnite zeleno dugme „Dalje” na dnu ekrana, upišite svoje ime i pritisnite „Pošalji izbor fotografu”.'),
-            q('Mogu li da biram više primeraka ili veličinu?', 'Da. Posle dugmeta „Dalje” za svaku fotografiju možete izabrati broj primeraka i veličinu.'),
+            q('Mogu li da dobijem više primeraka iste fotografije?', 'Da. Kada izaberete fotografiju, pritisnite + kod „Primeraka”. Sve fotografije se štampaju u istoj veličini.'),
             const SizedBox(height: 4),
             FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Razumem')),
           ],

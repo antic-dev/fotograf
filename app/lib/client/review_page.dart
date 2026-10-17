@@ -6,6 +6,7 @@ import '../api/models.dart';
 import '../ui/common.dart';
 import '../ui/theme.dart';
 import 'client_controller.dart';
+import 'quantity_stepper.dart';
 
 /// Drugi i poslednji korak: provera izbora, ime i slanje fotografu.
 class ReviewPage extends StatefulWidget {
@@ -108,7 +109,7 @@ class _ReviewPageState extends State<ReviewPage> {
                       const SizedBox(height: 8),
                       Text(
                         c.canEdit
-                            ? 'Za svaku fotografiju možete izabrati broj primeraka${c.project!.sizes.length > 1 ? ' i veličinu' : ''}. Ako vam je svejedno, samo pređite na dno i pošaljite.'
+                            ? 'Sve fotografije se štampaju u formatu ${c.project!.printSize.replaceAll('x', '×')} cm. Ako želite više primeraka neke fotografije, pritisnite +.'
                             : 'Ovo je izbor koji ste poslali fotografu.',
                         style: t.bodyLarge?.copyWith(color: AppColors.inkSoft),
                       ),
@@ -202,36 +203,19 @@ class _ItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = controller;
-    final p = c.project!;
     final t = Theme.of(context).textTheme;
     final number = c.indexOf(photo.id) + 1;
     final edit = c.canEdit;
 
-    Widget choice(String label, List<String> options, String value, void Function(String) onPick) => Padding(
-          padding: const EdgeInsets.only(top: 12),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: t.bodyMedium?.copyWith(color: AppColors.inkSoft, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 6),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final o in options)
-                ChoiceChip(
-                  label: Text(o),
-                  selected: o == value,
-                  onSelected: edit ? (_) => onPick(o) : null,
-                ),
-            ]),
-          ]),
-        );
-
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        child: Row(children: [
           GestureDetector(
             onTap: () => context.push('/g/${c.token}/foto/${photo.id}'),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: SizedBox(width: 104, height: 104, child: NetImage(c.thumbUrl(photo.id))),
+              child: SizedBox(width: 112, height: 112, child: NetImage(c.thumbUrl(photo.id))),
             ),
           ),
           const SizedBox(width: 14),
@@ -246,37 +230,18 @@ class _ItemCard extends StatelessWidget {
                     icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
                   ),
               ]),
-              Text(photo.name, style: t.bodySmall, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 10),
-              Text('Broj primeraka', style: t.bodyMedium?.copyWith(color: AppColors.inkSoft, fontWeight: FontWeight.w600)),
+              Text('Broj primeraka', style: t.bodyMedium?.copyWith(color: AppColors.inkSoft)),
               const SizedBox(height: 6),
-              Row(children: [
-                _StepButton(icon: Icons.remove_rounded, onTap: edit && item.quantity > 1 ? () => c.updateItem(photo.id, quantity: item.quantity - 1) : null),
-                SizedBox(width: 56, child: Text('${item.quantity}', textAlign: TextAlign.center, style: t.headlineSmall?.copyWith(fontFamily: bodyFont, fontWeight: FontWeight.w700))),
-                _StepButton(icon: Icons.add_rounded, onTap: edit && item.quantity < 99 ? () => c.updateItem(photo.id, quantity: item.quantity + 1) : null),
-              ]),
-              if (p.sizes.length > 1) choice('Veličina (cm)', p.sizes, item.size, (v) => c.updateItem(photo.id, size: v)),
-              if (p.finishes.length > 1) choice('Papir', p.finishes, item.finish, (v) => c.updateItem(photo.id, finish: v)),
+              QuantityStepper(
+                value: item.quantity,
+                onChanged: edit ? (q) => c.setQuantity(photo.id, q) : null,
+              ),
             ]),
           ),
         ]),
       ),
     );
   }
-}
-
-class _StepButton extends StatelessWidget {
-  const _StepButton({required this.icon, required this.onTap});
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) => IconButton.outlined(
-        onPressed: onTap,
-        iconSize: 26,
-        style: IconButton.styleFrom(minimumSize: const Size(52, 52), side: const BorderSide(color: AppColors.line, width: 1.5)),
-        icon: Icon(icon),
-      );
 }
 
 class _Summary extends StatelessWidget {
@@ -287,22 +252,18 @@ class _Summary extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = controller;
     final t = Theme.of(context).textTheme;
-    final groups = <String, int>{};
-    for (final p in c.selectedPhotos) {
-      final i = c.item(p.id)!;
-      final key = ['${i.size} cm', if (c.project!.finishes.length > 1) i.finish].join(' · ');
-      groups[key] = (groups[key] ?? 0) + i.quantity;
-    }
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(color: AppColors.emeraldSoft, borderRadius: BorderRadius.circular(20)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Ukupno', style: t.titleMedium?.copyWith(color: AppColors.emeraldDark)),
+        Text('Ukupno za štampu', style: t.titleMedium?.copyWith(color: AppColors.emeraldDark)),
         const SizedBox(height: 4),
-        Text('${photosLabel(c.selectedCount)} · ${copiesLabel(c.copies)}', style: t.headlineSmall?.copyWith(color: AppColors.emeraldDark)),
-        const SizedBox(height: 8),
-        for (final e in groups.entries)
-          Text('${e.key}:  ${copiesLabel(e.value)}', style: t.bodyLarge?.copyWith(color: AppColors.emeraldDark)),
+        Text(copiesLabel(c.copies), style: t.headlineMedium?.copyWith(color: AppColors.emeraldDark)),
+        const SizedBox(height: 4),
+        Text(
+          '${photosLabel(c.selectedCount)} · format ${c.project!.printSize.replaceAll('x', '×')} cm',
+          style: t.bodyLarge?.copyWith(color: AppColors.emeraldDark),
+        ),
       ]),
     );
   }
@@ -341,7 +302,7 @@ class _ThankYou extends StatelessWidget {
                 Text('Hvala${first.isEmpty ? '' : ', $first'}!', style: t.displaySmall, textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 Text(
-                  'Vaš izbor (${photosLabel(controller.selectedCount)}) je poslat fotografu.',
+                  'Vaš izbor (${photosLabel(controller.selectedCount)}, ${copiesLabel(controller.copies)}) je poslat fotografu.',
                   style: t.titleMedium?.copyWith(fontWeight: FontWeight.w500),
                   textAlign: TextAlign.center,
                 ),

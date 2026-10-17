@@ -19,11 +19,10 @@ COPY server/ ./
 RUN dart build cli -o /out
 
 # ---------- 3. Minimalna slika za rad ----------
-FROM debian:bookworm-slim
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates tzdata \
- && rm -rf /var/lib/apt/lists/* \
- && useradd --system --uid 10001 --home /app fotograf \
+# Ista Debian verzija kao dart:stable (glibc), bez apt-a: sertifikati se kopiraju.
+FROM debian:trixie-slim
+COPY --from=server /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+RUN useradd --system --uid 10001 --home /app fotograf \
  && mkdir -p /data && chown fotograf /data
 WORKDIR /app
 COPY --from=server /out/bundle/ /app/
