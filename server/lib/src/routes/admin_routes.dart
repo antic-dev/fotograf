@@ -156,8 +156,7 @@ void mountAdminRoutes(Router r, Services s) {
     );
     return jsonOk({
       'studioName': s.studioName,
-      'adminEmail': s.config.adminEmail,
-      'drive': {'connected': s.drive.connected, 'email': s.drive.connectedEmail, 'quota': quota},
+      'drive': {'connected': s.drive.connected, 'quota': quota},
       'stats': {
         'projects': db.scalar('SELECT COUNT(*) FROM projects'),
         'photos': db.scalar('SELECT COUNT(*) FROM photos'),
@@ -178,8 +177,7 @@ void mountAdminRoutes(Router r, Services s) {
       'printerEmail': s.printerEmail,
       'printSize': s.printSize,
       'smtpEnabled': s.mailer.enabled,
-      'adminEmail': s.config.adminEmail,
-      'drive': {'connected': s.drive.connected, 'email': s.drive.connectedEmail},
+      'drive': {'connected': s.drive.connected, 'configured': s.config.googleConfigured},
       'activeSessions': db.scalar('SELECT COUNT(*) FROM admin_sessions WHERE expires_at > ?', [nowMs()]),
     });
   });
@@ -235,6 +233,11 @@ void mountAdminRoutes(Router r, Services s) {
   // ---------------------------------------------------------------------------
 
   r.get('/api/admin/drive/connect', (Request req) {
+    if (!s.config.googleConfigured) {
+      return Response.found(
+        '/admin/podesavanja?drive=greska&poruka=${Uri.encodeQueryComponent('Google podaci nisu podešeni na serveru (GOOGLE_CLIENT_ID i GOOGLE_CLIENT_SECRET). Vidi README.')}',
+      );
+    }
     final now = nowMs();
     s.oauthPending.removeWhere((_, v) => v.expires < now);
     final state = randomToken(24);

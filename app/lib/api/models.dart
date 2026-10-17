@@ -294,9 +294,8 @@ class Settings {
     required this.printerEmail,
     required this.printSize,
     required this.smtpEnabled,
-    required this.adminEmail,
     required this.driveConnected,
-    required this.driveEmail,
+    required this.driveConfigured,
     required this.activeSessions,
   });
 
@@ -306,9 +305,8 @@ class Settings {
         printerEmail: j['printerEmail'] as String? ?? '',
         printSize: j['printSize'] as String? ?? '13x18',
         smtpEnabled: j['smtpEnabled'] as bool? ?? false,
-        adminEmail: j['adminEmail'] as String? ?? '',
         driveConnected: (j['drive'] as Map?)?['connected'] as bool? ?? false,
-        driveEmail: (j['drive'] as Map?)?['email'] as String?,
+        driveConfigured: (j['drive'] as Map?)?['configured'] as bool? ?? true,
         activeSessions: j['activeSessions'] as int? ?? 0,
       );
 
@@ -317,8 +315,7 @@ class Settings {
   final String printerEmail;
   final String printSize;
   final bool smtpEnabled;
-  final String adminEmail;
   final bool driveConnected;
-  final String? driveEmail;
+  final bool driveConfigured;
   final int activeSessions;
 }

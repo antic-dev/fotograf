@@ -127,7 +127,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 }),
                 if (quota != null && quota['limit'] != null) ...[
                   const SizedBox(height: 12),
-                  _StorageCard(usage: (quota['usage'] as num?) ?? 0, limit: quota['limit'] as num, email: drive['email'] as String?),
+                  _StorageCard(usage: (quota['usage'] as num?) ?? 0, limit: quota['limit'] as num),
                 ],
                 const SizedBox(height: 32),
                 Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 12, runSpacing: 10, children: [
@@ -176,10 +176,9 @@ class _DashboardPageState extends State<DashboardPage> {
 }
 
 class _StorageCard extends StatelessWidget {
-  const _StorageCard({required this.usage, required this.limit, this.email});
+  const _StorageCard({required this.usage, required this.limit});
   final num usage;
   final num limit;
-  final String? email;
 
   @override
   Widget build(BuildContext context) {
@@ -193,7 +192,7 @@ class _StorageCard extends StatelessWidget {
           const SizedBox(width: 16),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Google Drive${email == null ? '' : ' · $email'}', style: t.titleSmall),
+              Text('Google Drive', style: t.titleSmall),
               const SizedBox(height: 8),
               ClipRRect(borderRadius: BorderRadius.circular(99), child: LinearProgressIndicator(value: ratio, minHeight: 8)),
               const SizedBox(height: 6),

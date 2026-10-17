@@ -1,17 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
-/// Jedini administrator aplikacije. Svi ostali posetioci su klijenti koji
-/// pristupaju isključivo preko tajnog linka projekta.
-const defaultAdminEmail = 'minehost43@gmail.com';
+import 'package:path/path.dart' as p;
+
+/// Najmanja dozvoljena dužina administratorske lozinke.
+const minPasswordLength = 8;
 
 class Config {
   Config({
-    required this.adminEmail,
-    required this.driveEmail,
-    required this.googleClientId,
-    required this.googleClientSecret,
     required this.publicUrl,
     required this.port,
     required this.host,
@@ -21,6 +19,11 @@ class Config {
     required this.cookieSecure,
     required this.trustProxy,
     required this.maxUploadBytes,
+    this.adminEmail,
+    this.adminPassword,
+    this.driveEmail,
+    this.googleClientId = '',
+    this.googleClientSecret = '',
     this.cacheMaxBytes = 10 * 1024 * 1024 * 1024,
     this.smtpHost,
     this.smtpPort = 587,
@@ -29,11 +32,19 @@ class Config {
     this.smtpFrom,
   });
 
-  final String adminEmail;
+  /// Mejl jedinog administratora (ADMIN_EMAIL). Kao i lozinka, upisuje se u
+  /// bazu pri pokretanju, pa kasnije može da se izostavi. Nigde se ne prikazuje.
+  final String? adminEmail;
 
-  /// Google nalog čiji se Drive koristi za skladište (podrazumevano isti kao
-  /// administratorski). Korisno ako je veliki prostor na drugom nalogu.
-  final String driveEmail;
+  /// Početna lozinka administratora (ADMIN_PASSWORD). Čuva se samo kao jak
+  /// heš u bazi; promena ove vrednosti resetuje lozinku.
+  final String? adminPassword;
+
+  /// Opciono: jedini Google nalog čiji Drive sme da se poveže (DRIVE_EMAIL).
+  /// Bez njega se koristi nalog koji administrator izabere pri povezivanju.
+  final String? driveEmail;
+
+  /// Google OAuth podaci — potrebni SAMO za povezivanje Google Drive-a.
   final String googleClientId;
   final String googleClientSecret;
 
@@ -44,8 +55,8 @@ class Config {
   final String dataDir;
   final String webDir;
 
-  /// 32 bajta tajnog ključa (APP_SECRET, base64) za AES-256-GCM šifrovanje
-  /// osetljivih podataka u bazi (Google refresh token, linkovi).
+  /// 32 bajta tajnog ključa za AES-256-GCM šifrovanje osetljivih podataka u
+  /// bazi (Google refresh token, linkovi).
   final Uint8List secretKey;
   final bool cookieSecure;
   final bool trustProxy;
@@ -63,55 +74,98 @@ class Config {
   bool get smtpEnabled =>
       (smtpHost ?? '').isNotEmpty && (smtpUser ?? '').isNotEmpty && (smtpPassword ?? '').isNotEmpty;
 
+  bool get googleConfigured => googleClientId.isNotEmpty && googleClientSecret.isNotEmpty;
+
   String get driveRedirectUri => '$publicUrl/api/admin/drive/callback';
 
   Uri get publicOrigin => Uri.parse(publicUrl);
 
   static Config fromEnvironment([Map<String, String>? env]) {
     final e = env ?? Platform.environment;
-    String req(String key) {
+    String? opt(String key) {
       final v = e[key]?.trim() ?? '';
-      if (v.isEmpty) {
-        throw StateError('Nedostaje obavezna promenljiva okruženja $key (pogledaj .env.example).');
-      }
-      return v;
+      return v.isEmpty ? null : v;
     }
 
-    final secret = base64.decode(req('APP_SECRET'));
-    if (secret.length != 32) {
-      throw StateError('APP_SECRET mora biti 32 bajta u base64 formatu (openssl rand -base64 32).');
-    }
-    var publicUrl = req('PUBLIC_URL');
+    final port = int.parse(opt('PORT') ?? '8080');
+    final dataDir = opt('DATA_DIR') ?? 'data';
+
+    // Bez PUBLIC_URL aplikacija radi lokalno na ovom računaru.
+    var publicUrl = opt('PUBLIC_URL') ?? 'http://localhost:$port';
     while (publicUrl.endsWith('/')) {
       publicUrl = publicUrl.substring(0, publicUrl.length - 1);
     }
-    final cookieSecure = (e['COOKIE_SECURE'] ?? 'true').toLowerCase() != 'false';
-    if (cookieSecure && !publicUrl.startsWith('https://') && !publicUrl.startsWith('http://localhost')) {
-      throw StateError('PUBLIC_URL mora koristiti https:// u produkciji.');
+    final local = publicUrl.startsWith('http://localhost') || publicUrl.startsWith('http://127.0.0.1');
+    final cookieSecure =
+        (opt('COOKIE_SECURE') ?? (publicUrl.startsWith('https://') ? 'true' : 'false')).toLowerCase() != 'false';
+    if (!publicUrl.startsWith('https://') && !local) {
+      throw StateError('PUBLIC_URL mora koristiti https:// (npr. https://foto.mojsajt.rs).');
     }
 
-    final adminEmail = (e['ADMIN_EMAIL'] ?? defaultAdminEmail).trim().toLowerCase();
-    final driveEmail = (e['DRIVE_EMAIL'] ?? '').trim().toLowerCase();
+    // ADMIN_PASSWORD_B64 koristi automatsko postavljanje (deploy.yml), da
+    // specijalni znakovi u lozinki ($, #, navodnici) ne smetaju .env fajlu.
+    final b64 = opt('ADMIN_PASSWORD_B64');
+    String? adminPassword;
+    if (b64 != null) {
+      try {
+        adminPassword = utf8.decode(base64.decode(b64));
+      } on FormatException {
+        throw StateError('ADMIN_PASSWORD_B64 nije ispravan base64.');
+      }
+    } else {
+      adminPassword = opt('ADMIN_PASSWORD');
+    }
+    if (adminPassword != null && adminPassword.length < minPasswordLength) {
+      throw StateError('ADMIN_PASSWORD mora imati bar $minPasswordLength znakova.');
+    }
+
+    final adminEmail = opt('ADMIN_EMAIL')?.toLowerCase();
+    if (adminEmail != null && !RegExp(r'^[^@\s]+@[^@\s]+$').hasMatch(adminEmail)) {
+      throw StateError('ADMIN_EMAIL nije ispravan mejl.');
+    }
     return Config(
       adminEmail: adminEmail,
-      driveEmail: driveEmail.isEmpty ? adminEmail : driveEmail,
-      googleClientId: req('GOOGLE_CLIENT_ID'),
-      googleClientSecret: req('GOOGLE_CLIENT_SECRET'),
+      adminPassword: adminPassword,
+      driveEmail: opt('DRIVE_EMAIL')?.toLowerCase(),
+      googleClientId: opt('GOOGLE_CLIENT_ID') ?? '',
+      googleClientSecret: opt('GOOGLE_CLIENT_SECRET') ?? '',
       publicUrl: publicUrl,
-      port: int.parse(e['PORT'] ?? '8080'),
-      host: e['HOST'] ?? '0.0.0.0',
-      dataDir: e['DATA_DIR'] ?? 'data',
-      webDir: e['WEB_DIR'] ?? '../app/build/web',
-      secretKey: Uint8List.fromList(secret),
+      port: port,
+      host: opt('HOST') ?? '0.0.0.0',
+      dataDir: dataDir,
+      webDir: opt('WEB_DIR') ?? '../app/build/web',
+      secretKey: _secretKey(opt('APP_SECRET'), dataDir),
       cookieSecure: cookieSecure,
-      trustProxy: (e['TRUST_PROXY'] ?? 'false').toLowerCase() == 'true',
-      maxUploadBytes: int.parse(e['MAX_UPLOAD_MB'] ?? '80') * 1024 * 1024,
-      cacheMaxBytes: (double.parse(e['CACHE_MAX_GB'] ?? '10') * 1024 * 1024 * 1024).round(),
-      smtpHost: e['SMTP_HOST'],
-      smtpPort: int.tryParse(e['SMTP_PORT'] ?? '') ?? 587,
-      smtpUser: e['SMTP_USER'],
-      smtpPassword: e['SMTP_PASSWORD'],
-      smtpFrom: e['SMTP_FROM'],
+      trustProxy: (opt('TRUST_PROXY') ?? 'false').toLowerCase() == 'true',
+      maxUploadBytes: int.parse(opt('MAX_UPLOAD_MB') ?? '80') * 1024 * 1024,
+      cacheMaxBytes: (double.parse(opt('CACHE_MAX_GB') ?? '10') * 1024 * 1024 * 1024).round(),
+      smtpHost: opt('SMTP_HOST'),
+      smtpPort: int.tryParse(opt('SMTP_PORT') ?? '') ?? 587,
+      smtpUser: opt('SMTP_USER'),
+      smtpPassword: opt('SMTP_PASSWORD'),
+      smtpFrom: opt('SMTP_FROM'),
     );
+  }
+
+  /// APP_SECRET iz okruženja, ili ključ koji se jednom napravi i čuva u
+  /// fajlu `app_secret` u folderu sa podacima.
+  static Uint8List _secretKey(String? fromEnv, String dataDir) {
+    if (fromEnv != null) {
+      final k = base64.decode(fromEnv);
+      if (k.length != 32) throw StateError('APP_SECRET mora biti 32 bajta u base64 formatu (openssl rand -base64 32).');
+      return Uint8List.fromList(k);
+    }
+    Directory(dataDir).createSync(recursive: true);
+    final f = File(p.join(dataDir, 'app_secret'));
+    if (f.existsSync()) {
+      final k = base64.decode(f.readAsStringSync().trim());
+      if (k.length == 32) return Uint8List.fromList(k);
+      throw StateError('Fajl ${f.path} je oštećen.');
+    }
+    final rng = Random.secure();
+    final k = Uint8List.fromList(List.generate(32, (_) => rng.nextInt(256)));
+    f.writeAsStringSync(base64.encode(k));
+    if (!Platform.isWindows) Process.runSync('chmod', ['600', f.path]);
+    return k;
   }
 }

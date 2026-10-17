@@ -33,13 +33,13 @@ Handler buildHandler(Services s) {
 Middleware _securityHeaders(Services s) {
   final csp = [
     "default-src 'self'",
-    // Flutter (CanvasKit) koristi WebAssembly; Google prijava se učitava sa accounts.google.com
-    "script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com/gsi/client",
-    "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style",
+    // Flutter (CanvasKit) koristi WebAssembly; nijedna spoljna skripta nije dozvoljena.
+    "script-src 'self' 'wasm-unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data: https://fonts.gstatic.com",
-    "connect-src 'self' https://accounts.google.com/gsi/ https://fonts.gstatic.com",
-    'frame-src https://accounts.google.com/gsi/',
+    "connect-src 'self' https://fonts.gstatic.com",
+    "frame-src 'none'",
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
@@ -53,7 +53,7 @@ Middleware _securityHeaders(Services s) {
     'x-content-type-options': 'nosniff',
     'x-frame-options': 'DENY',
     'referrer-policy': 'no-referrer',
-    'cross-origin-opener-policy': 'same-origin-allow-popups',
+    'cross-origin-opener-policy': 'same-origin',
     'cross-origin-resource-policy': 'same-origin',
     'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
     'x-robots-tag': 'noindex, nofollow, noarchive',

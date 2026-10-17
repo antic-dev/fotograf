@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 import '../api/api.dart';
 import '../ui/common.dart';
-import '../ui/theme.dart';
 import 'client_controller.dart';
 
 /// Učitava projekat po tajnom linku i deli stanje između galerije,
@@ -80,45 +78,17 @@ class _ClientShellState extends State<ClientShell> {
   }
 }
 
-/// Početna stranica — namerno ne otkriva ništa o projektima.
-class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+/// Nepoznata adresa (npr. nepotpun link). Namerno ne otkriva ništa o
+/// projektima niti o administraciji.
+class UnknownLinkPage extends StatelessWidget {
+  const UnknownLinkPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(28),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Container(
-                  width: 96,
-                  height: 96,
-                  decoration: const BoxDecoration(color: AppColors.ink, shape: BoxShape.circle),
-                  child: const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 44),
-                ),
-                const SizedBox(height: 28),
-                Text('Vaše fotografije', style: t.displaySmall, textAlign: TextAlign.center),
-                const SizedBox(height: 14),
-                Text(
-                  'Za pregled i izbor fotografija otvorite link koji ste dobili od fotografa (porukom ili mejlom).',
-                  style: t.bodyLarge?.copyWith(color: AppColors.inkSoft),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 48),
-                TextButton(
-                  onPressed: () => context.go('/admin'),
-                  child: Text('Prijava za fotografa', style: t.bodyMedium?.copyWith(color: AppColors.inkFaint)),
-                ),
-              ]),
-            ),
-          ),
+  Widget build(BuildContext context) => const Scaffold(
+        body: EmptyState(
+          icon: Icons.link_off_rounded,
+          title: 'Link ne radi',
+          message: 'Otvorite ceo link koji ste dobili od fotografa (porukom ili mejlom).',
         ),
-      ),
-    );
-  }
+      );
 }

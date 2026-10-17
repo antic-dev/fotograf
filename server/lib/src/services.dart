@@ -10,6 +10,7 @@ import 'google_id_token.dart';
 import 'http_util.dart';
 import 'images.dart';
 import 'mailer.dart';
+import 'passwords.dart';
 import 'rate_limit.dart';
 
 const adminSessionAbsolute = Duration(hours: 12);
@@ -45,7 +46,6 @@ class Services {
 
   String get adminCookie => cookieName('fa', config.cookieSecure);
   String get visitorCookie => cookieName('fv', config.cookieSecure);
-  String get nonceCookie => cookieName('fn', config.cookieSecure);
   String get oauthCookie => cookieName('fo', config.cookieSecure);
 
   String ip(Request req) => clientIp(req, trustProxy: config.trustProxy);
@@ -123,6 +123,60 @@ class Services {
 
   String adminCookieHeader(String token) =>
       buildCookie(adminCookie, token, secure: config.cookieSecure, maxAge: adminSessionAbsolute);
+
+  // ---------------------------------------------------------------------------
+  // Nalog administratora (mejl + lozinka)
+  // ---------------------------------------------------------------------------
+
+  String? get adminEmail => db.setting('admin_email');
+
+  bool get adminAccountSet => adminEmail != null && db.setting('admin_password_hash') != null;
+
+  /// Pri pokretanju: ADMIN_EMAIL i ADMIN_PASSWORD podešavaju nalog prvi put,
+  /// a kasnija promena tih vrednosti ih menja (npr. zaboravljena lozinka).
+  Future<void> initAdminAccount() async {
+    final email = config.adminEmail;
+    if (email != null && email != adminEmail) {
+      db.setSetting('admin_email', email);
+      db.audit('admin_email_set');
+    }
+    final pw = config.adminPassword;
+    if (pw == null) return;
+    final fp = envPasswordFingerprint(pw, config.secretKey);
+    if (db.setting('admin_password_env_fp') == fp && db.setting('admin_password_hash') != null) return;
+    db.setSetting('admin_password_hash', await hashPassword(pw));
+    db.setSetting('admin_password_env_fp', fp);
+    db.setSetting('login_failures', null);
+    db.setSetting('login_locked_until', null);
+    db.audit('password_set_from_env');
+  }
+
+  Future<void> setAdminPassword(String password) async {
+    db.setSetting('admin_password_hash', await hashPassword(password));
+  }
+
+  /// Koliko još traje zaključavanje posle previše pogrešnih lozinki.
+  Duration get loginLockRemaining {
+    final until = int.tryParse(db.setting('login_locked_until') ?? '') ?? 0;
+    final left = until - nowMs();
+    return left > 0 ? Duration(milliseconds: left) : Duration.zero;
+  }
+
+  /// Posle 5 uzastopnih grešaka prijava se zaključava na 1, 2, 4... (najviše
+  /// 60) minuta. Pogađanje lozinke tako postaje praktično nemoguće.
+  void recordLoginFailure() {
+    final failures = (int.tryParse(db.setting('login_failures') ?? '') ?? 0) + 1;
+    db.setSetting('login_failures', '$failures');
+    if (failures >= 5) {
+      final minutes = (1 << (failures - 5).clamp(0, 6)).clamp(1, 60);
+      db.setSetting('login_locked_until', '${nowMs() + minutes * 60000}');
+    }
+  }
+
+  void recordLoginSuccess() {
+    db.setSetting('login_failures', null);
+    db.setSetting('login_locked_until', null);
+  }
 
   // ---------------------------------------------------------------------------
   // Posetioci (klijenti bez naloga)

@@ -124,10 +124,15 @@ class TestApp {
   static const origin = 'https://foto.test';
   static const clientId = 'test-client.apps.googleusercontent.com';
 
-  static TestApp create(FakeGoogle google) {
+  static const adminEmail = 'fotograf@example.com';
+  static const adminPassword = 'Tajna-Lozinka-2026';
+
+  static Future<TestApp> create(FakeGoogle google) async {
     final tmp = Directory.systemTemp.createTempSync('fotograf-test');
     final config = Config.fromEnvironment({
       'APP_SECRET': base64.encode(List.filled(32, 7)),
+      'ADMIN_EMAIL': adminEmail,
+      'ADMIN_PASSWORD': adminPassword,
       'PUBLIC_URL': origin,
       'GOOGLE_CLIENT_ID': clientId,
       'GOOGLE_CLIENT_SECRET': 'secret',
@@ -145,6 +150,7 @@ class TestApp {
       idVerifier: GoogleIdTokenVerifier(clientId: clientId, client: google.client()),
       mailer: Mailer(config),
     );
+    await services.initAdminAccount();
     return TestApp._(services, buildHandler(services), drive, google, tmp);
   }
 
@@ -195,12 +201,12 @@ class TestApp {
   }
 
   Future<void> loginAsAdmin() async {
-    final start = await call('GET', '/api/auth/start');
-    final nonce = start.json['nonce'] as String;
-    final token = google.sign(idPayload(email: services.config.adminEmail, nonce: nonce));
-    final res = await call('POST', '/api/auth/google', json: {'credential': token});
+    final res = await login(adminEmail, adminPassword);
     if (res.status != 200) throw StateError('Admin login nije uspeo: ${res.text}');
   }
+
+  Future<TestResponse> login(String email, String password) =>
+      call('POST', '/api/auth/login', json: {'email': email, 'password': password});
 
   Map<String, Object?> idPayload({required String email, String? nonce, bool verified = true, String? aud, int? exp}) {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;

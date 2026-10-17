@@ -50,7 +50,6 @@ class DriveStore {
   final Map<String, Future<String>> _folderLocks = {};
 
   bool get connected => db.setting('drive_refresh_token') != null;
-  String? get connectedEmail => db.setting('drive_email');
 
   drive.DriveApi _driveApi() {
     if (_api != null) return _api!;
@@ -234,12 +233,11 @@ class DriveStore {
       });
 
   Future<Map<String, Object?>> quota() => _call((api) async {
-        final about = await api.about.get($fields: 'storageQuota,user(emailAddress)');
+        final about = await api.about.get($fields: 'storageQuota');
         final q = about.storageQuota;
         return {
           'limit': int.tryParse(q?.limit ?? ''),
           'usage': int.tryParse(q?.usage ?? ''),
-          'email': about.user?.emailAddress,
         };
       });
 
@@ -258,7 +256,7 @@ class DriveStore {
           'access_type': 'offline',
           'prompt': 'consent',
           'include_granted_scopes': 'false',
-          'login_hint': config.driveEmail,
+          if (config.driveEmail != null) 'login_hint': config.driveEmail!,
           'state': state,
           'code_challenge': pkceChallenge(codeVerifier),
           'code_challenge_method': 'S256',
@@ -297,9 +295,9 @@ class DriveStore {
       throw ApiError.badRequest('Morate dozvoliti pristup Google Drive-u (štiklirajte polje na Google ekranu).');
     }
     final identity = await verifier.verify(idToken);
-    if (!identity.emailVerified || identity.email != config.driveEmail) {
+    if (!identity.emailVerified || (config.driveEmail != null && identity.email != config.driveEmail)) {
       await _revoke(refresh);
-      throw ApiError.forbidden('Drive se može povezati samo sa nalogom ${config.driveEmail}.');
+      throw ApiError.forbidden('Izabrani Google nalog nije dozvoljen (DRIVE_EMAIL). Izaberite pravi nalog.');
     }
     reset();
     db.setSetting('drive_refresh_token', box.encrypt(refresh));

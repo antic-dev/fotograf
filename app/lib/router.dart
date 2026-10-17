@@ -35,9 +35,14 @@ GoRouter buildRouter() => GoRouter(
         if (loc == '/admin/prijava' && AdminAuth.instance.loggedIn == true) return '/admin';
         return null;
       },
-      errorBuilder: (context, state) => const HomePage(),
+      errorBuilder: (context, state) => const UnknownLinkPage(),
       routes: [
-        GoRoute(path: '/', builder: (context, state) => const HomePage()),
+        // Početna adresa je prijava za fotografa. Klijenti dobijaju samo
+        // link galerije (/g/...) i na njemu nema ničeg administratorskog.
+        GoRoute(
+          path: '/',
+          redirect: (context, state) async => await AdminAuth.instance.check() ? '/admin' : '/admin/prijava',
+        ),
 
         // Klijenti — samo preko tajnog linka
         ShellRoute(

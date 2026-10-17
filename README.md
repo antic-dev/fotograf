@@ -73,7 +73,7 @@ svako ima svoj folder; uz to ide `SPISAK.txt`.
 
 | Pretnja | Zaštita |
 |---|---|
-| Neko drugi kao administrator | Samo `minehost43@gmail.com`; Google ID token se **kriptografski proverava na serveru** (RS256, izdavalac, aud, rok, verifikovan mejl) + jednokratni **nonce** protiv ponovne upotrebe tokena |
+| Neko drugi kao administrator | Jedan nalog (mejl + lozinka); mejl se **nigde ne prikazuje** — ni na sajtu, ni u odgovorima servera. Lozinka se čuva **samo kao heš** (PBKDF2-SHA256, 310.000 iteracija, nasumična so); posle 5 pogrešnih pokušaja prijava se **zaključava** (1 → 60 min); ograničen broj pokušaja po IP adresi; poruka ne otkriva da li je pogrešan mejl ili lozinka; promena lozinke odjavljuje sve druge uređaje |
 | Krađa sesije | Nasumični 256-bitni token u `HttpOnly; Secure; SameSite=Strict` kolačiću (`__Host-` prefiks); u bazi se čuva samo SHA-256 heš; ističe posle 12 h (ili 4 h neaktivnosti); „Odjavi sve uređaje” |
 | Pogađanje linkova | 192-bitni nasumični tokeni; u bazi samo heš; ograničen broj pokušaja po IP adresi |
 | Pristup tuđem projektu | Server za **svaku** sliku proverava da pripada projektu tog linka; link jednog projekta ne otvara nijedan drugi |
@@ -93,9 +93,13 @@ svako ima svoj folder; uz to ide `SPISAK.txt`.
 
 ## 🚀 Postavljanje (jednom)
 
-### 1. Google Cloud (≈10 minuta)
+### 1. Google Cloud — samo za Google Drive (≈10 minuta, besplatno)
 
-1. Otvorite <https://console.cloud.google.com> (nalogom `minehost43@gmail.com`) → **New project** → „Fotograf”.
+Za **prijavu** vam ne treba ništa od Google-a — prijavljujete se mejlom i lozinkom.
+Google Cloud projekat je potreban samo da bi aplikacija smela da čuva fotografije na
+vašem Drive-u (dobijate *Client ID* i *Client secret*; ništa se ne plaća).
+
+1. Otvorite <https://console.cloud.google.com> (svojim Google nalogom) → **New project** → „Fotograf”.
 2. **APIs & Services → Library** → potražite **Google Drive API** → **Enable**.
 3. **APIs & Services → OAuth consent screen** (Google Auth Platform):
    - User type: **External**, naziv aplikacije „Fotograf”, vaš mejl za podršku.
@@ -105,8 +109,8 @@ svako ima svoj folder; uz to ide `SPISAK.txt`.
      `drive.file` ne zahteva Google verifikaciju.
 4. **APIs & Services → Credentials → Create credentials → OAuth client ID**:
    - Application type: **Web application**
-   - **Authorized JavaScript origins**: `https://foto.vasdomen.rs`
    - **Authorized redirect URIs**: `https://foto.vasdomen.rs/api/admin/drive/callback`
+     (za probu na svom računaru dodajte i `http://localhost:8080/api/admin/drive/callback`)
    - Kopirajte **Client ID** i **Client secret**.
 
 ### 2. Postavljanje na vaš domen (bez kucanja komandi)
@@ -139,9 +143,11 @@ New repository secret**, dodajte:
 | `DEPLOY_HOST` | IP adresa servera |
 | `DEPLOY_PASSWORD` | root lozinka servera *(ili `DEPLOY_SSH_KEY` — privatni SSH ključ)* |
 | `DOMAIN` | `foto.vasdomen.rs` |
-| `GOOGLE_CLIENT_ID` | iz koraka 1 |
+| `ADMIN_EMAIL` | mejl kojim se prijavljujete u aplikaciju (nigde se ne prikazuje) |
+| `ADMIN_PASSWORD` | vaša lozinka za prijavu u aplikaciju (najmanje 8 znakova; svi znakovi su dozvoljeni) |
+| `GOOGLE_CLIENT_ID` | iz koraka 1 *(bez njega prijava radi, ali Drive ne može da se poveže)* |
 | `GOOGLE_CLIENT_SECRET` | iz koraka 1 |
-| `DRIVE_EMAIL` | *(opciono)* nalog sa 5 TB, ako nije `minehost43@gmail.com` |
+| `DRIVE_EMAIL` | *(opciono)* jedini Google nalog čiji Drive sme da se poveže (npr. onaj sa 5 TB) |
 | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` | *(opciono)* za mejl štampariji jednim dodirom |
 | `DEPLOY_USER` | *(opciono)* korisnik na serveru, podrazumevano `root` |
 
@@ -156,13 +162,19 @@ aplikaciju + Caddy (HTTPS). Podaci i baza ostaju između verzija.
 
 ### 3. Prvo pokretanje
 
-1. Otvorite `https://foto.vasdomen.rs/admin` → **Sign in with Google**.
+1. Otvorite `https://foto.vasdomen.rs` — početna stranica je **prijava za fotografa**.
+   Upišite `ADMIN_EMAIL` i `ADMIN_PASSWORD`. Pregledač nudi da zapamti lozinku.
+   Klijenti dobijaju samo link galerije i na njemu nema ničeg administratorskog.
 2. **Podešavanja → Poveži Google Drive** → dozvolite pristup.
    Na Drive-u se pojavljuje folder **Fotograf**.
 3. Upišite naziv studija (koristi se i za žig) i mejl štamparije.
 
-> Ako je vaših 5 TB na **drugom** Google nalogu (npr. studentskom), upišite ga kao
-> `DRIVE_EMAIL` u `.env`. Prijava u aplikaciju ostaje samo za `ADMIN_EMAIL`.
+> **Promena lozinke:** Podešavanja → Lozinka (traži trenutnu lozinku; ostali uređaji se odjavljuju).
+> **Zaboravljena lozinka:** na GitHub-u promenite secret `ADMIN_PASSWORD` i pokrenite
+> **Actions → Deploy → Run workflow** — nova lozinka zamenjuje staru.
+
+> Pri povezivanju Drive-a izaberite Google nalog na kom je vaših 5 TB (npr. studentski).
+> Ako želite da se nikad ne poveže pogrešan nalog, upišite ga kao secret `DRIVE_EMAIL`.
 > (Fakultetski Google Workspace nalozi ponekad imaju zabranu za aplikacije trećih
 > strana — tada se obratite administratoru fakulteta ili koristite lični nalog.)
 
@@ -175,7 +187,7 @@ Lozinke za aplikacije**, pa u `.env`:
 ```
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USER=minehost43@gmail.com
+SMTP_USER=vas.nalog@gmail.com
 SMTP_PASSWORD=xxxx xxxx xxxx xxxx
 ```
 
@@ -190,6 +202,24 @@ docker compose cp app:/data/fotograf.db ./backup-$(date +%F).db
 
 ---
 
+## 💻 Pokretanje na svom računaru (Windows)
+
+`flutter run` pokreće **samo izgled** aplikacije, bez servera — zato tada prijava i admin
+panel ne rade. Za pravu aplikaciju na svom računaru:
+
+1. Instalirajte [Flutter](https://docs.flutter.dev/get-started/install/windows) (u njemu je i Dart).
+2. U folderu projekta **dvoklik na `pokreni.cmd`** (ili u PowerShell-u: `.\pokreni.ps1`).
+3. Prvi put upišite mejl i lozinku za prijavu (lozinka najmanje 8 znakova). Pregledač se
+   sam otvori na `http://localhost:8080/admin` → prijavite se tim mejlom i lozinkom.
+
+Sledeći put samo pritisnite Enter (mejl i lozinka ostaju isti). `.\pokreni.ps1 -Brzo` preskače
+ponovnu izgradnju web aplikacije. Podaci se čuvaju u `server\data`. Za Google Drive lokalno
+postavite `$env:GOOGLE_CLIENT_ID` i `$env:GOOGLE_CLIENT_SECRET` pre pokretanja i dodajte
+lokalni redirect URI iz koraka 1.
+
+Na serveru (ručno, bez GitHub Actions) — u `.env` upišite `ADMIN_EMAIL` i `ADMIN_PASSWORD` (vidi `.env.example`)
+pa `docker compose up -d --build`.
+
 ## 🧪 Demo bez Google naloga
 
 Da vidite celu aplikaciju lokalno, sa izmišljenim fotografijama:
@@ -199,7 +229,7 @@ cd app && flutter build web --release --no-web-resources-cdn
 cd ../server && dart run tool/demo_server.dart
 ```
 
-U konzoli se ispišu link za klijenta i za administratora.
+U konzoli se ispišu link za klijenta, adresa za administratora i demo mejl/lozinka.
 
 ## 🛠️ Razvoj
 

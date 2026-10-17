@@ -10,7 +10,6 @@ class AdminAuth extends ChangeNotifier {
   static final AdminAuth instance = AdminAuth._();
 
   bool? loggedIn;
-  String email = '';
   String studioName = '';
   Future<bool>? _checking;
 
@@ -19,7 +18,6 @@ class AdminAuth extends ChangeNotifier {
     return _checking ??= () async {
       try {
         final me = await Api.instance.get('/api/auth/me') as Map<String, dynamic>;
-        email = me['email'] as String? ?? '';
         studioName = me['studioName'] as String? ?? '';
         loggedIn = true;
       } catch (_) {
@@ -31,8 +29,8 @@ class AdminAuth extends ChangeNotifier {
     }();
   }
 
-  Future<void> loginWithGoogle(String credential) async {
-    await Api.instance.post('/api/auth/google', {'credential': credential});
+  Future<void> login(String email, String password) async {
+    await Api.instance.post('/api/auth/login', {'email': email.trim(), 'password': password});
     loggedIn = null;
     await check();
   }

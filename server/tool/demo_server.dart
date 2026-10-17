@@ -25,9 +25,6 @@ class MemoryDrive extends DriveStore {
   bool get connected => true;
 
   @override
-  String? get connectedEmail => config.adminEmail;
-
-  @override
   Future<String> ensureProjectFolder(String projectId) async => 'demo-folder-$projectId';
 
   @override
@@ -47,7 +44,7 @@ class MemoryDrive extends DriveStore {
   Future<void> trash(String fileId) async {}
 
   @override
-  Future<Map<String, Object?>> quota() async => {'limit': 5 * 1024 * 1024 * 1024 * 1024, 'usage': 812 * 1024 * 1024 * 1024, 'email': config.adminEmail};
+  Future<Map<String, Object?>> quota() async => {'limit': 5 * 1024 * 1024 * 1024 * 1024, 'usage': 812 * 1024 * 1024 * 1024};
 }
 
 /// "Fotografija" pejzaža: nebo, sunce i slojevi brda.
@@ -97,11 +94,16 @@ class Color {
       Color.rgb((a.r + (b.r - a.r) * t).round(), (a.g + (b.g - a.g) * t).round(), (a.b + (b.b - a.b) * t).round());
 }
 
+const demoEmail = 'demo@fotograf.local';
+const demoPassword = 'demo-lozinka';
+
 Future<void> main(List<String> args) async {
   final port = int.parse(Platform.environment['PORT'] ?? '8080');
   final tmp = Directory.systemTemp.createTempSync('fotograf-demo');
   final config = Config.fromEnvironment({
     'APP_SECRET': base64.encode(List.filled(32, 1)),
+    'ADMIN_EMAIL': demoEmail,
+    'ADMIN_PASSWORD': demoPassword,
     'PUBLIC_URL': 'http://localhost:$port',
     'GOOGLE_CLIENT_ID': 'demo.apps.googleusercontent.com',
     'GOOGLE_CLIENT_SECRET': 'demo',
@@ -121,6 +123,7 @@ Future<void> main(List<String> args) async {
     idVerifier: GoogleIdTokenVerifier(clientId: config.googleClientId),
     mailer: Mailer(config),
   );
+  await s.initAdminAccount();
   final app = buildHandler(s);
 
   // --- Seed podaci preko pravog API-ja ---
@@ -195,6 +198,8 @@ Future<void> main(List<String> args) async {
     ..writeln('')
     ..writeln('Demo radi!')
     ..writeln('  Klijent:        $origin/g/$token')
-    ..writeln('  Administrator:  $origin/demo-login')
+    ..writeln('  Administrator:  $origin/admin')
+    ..writeln('     mejl:    $demoEmail')
+    ..writeln('     lozinka: $demoPassword')
     ..writeln('');
 }

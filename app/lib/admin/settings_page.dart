@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../api/api.dart';
@@ -28,6 +29,13 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _saving = false;
   List<Map<String, dynamic>>? _audit;
 
+  final _pwForm = GlobalKey<FormState>();
+  final _pwCurrent = TextEditingController();
+  final _pwNext = TextEditingController();
+  final _pwRepeat = TextEditingController();
+  bool _pwBusy = false;
+  bool _pwShow = false;
+
   @override
   void initState() {
     super.initState();
@@ -50,7 +58,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
-    for (final c in [_studio, _watermark, _printer, _printSize]) {
+    for (final c in [_studio, _watermark, _printer, _printSize, _pwCurrent, _pwNext, _pwRepeat]) {
       c.dispose();
     }
     super.dispose();
@@ -125,6 +133,24 @@ class _SettingsPageState extends State<SettingsPage> {
     if (mounted) context.go('/admin/prijava');
   }
 
+  Future<void> _changePassword() async {
+    if (_pwBusy || !_pwForm.currentState!.validate()) return;
+    setState(() => _pwBusy = true);
+    try {
+      await Api.instance.post('/api/admin/password', {'current': _pwCurrent.text, 'next': _pwNext.text});
+      TextInput.finishAutofillContext();
+      for (final c in [_pwCurrent, _pwNext, _pwRepeat]) {
+        c.clear();
+      }
+      if (mounted) showMessage(context, 'Lozinka je promenjena. Ostali uređaji su odjavljeni.');
+      await _load();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _pwBusy = false);
+    }
+  }
+
   Future<void> _loadAudit() async {
     try {
       final list = await Api.instance.get('/api/admin/audit') as List;
@@ -166,9 +192,26 @@ class _SettingsPageState extends State<SettingsPage> {
                   Row(children: [
                     const Icon(Icons.check_circle_rounded, color: AppColors.emerald),
                     const SizedBox(width: 10),
-                    Expanded(child: Text('Povezano: ${s.driveEmail ?? ''}', style: t.titleSmall)),
+                    Expanded(child: Text('Google Drive je povezan', style: t.titleSmall)),
                     TextButton(onPressed: _disconnect, child: const Text('Isključi')),
                   ])
+                else if (!s.driveConfigured)
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(color: AppColors.amberSoft, borderRadius: BorderRadius.circular(16)),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Icon(Icons.info_outline_rounded, color: AppColors.amber),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Server još nema Google podatke (GOOGLE_CLIENT_ID i GOOGLE_CLIENT_SECRET). '
+                          'Upišite ih u podešavanja servera i ponovo ga pokrenite — tada se ovde pojavljuje dugme „Poveži Google Drive”. '
+                          'Uputstvo je u README fajlu.',
+                          style: t.bodyMedium,
+                        ),
+                      ),
+                    ]),
+                  )
                 else
                   const DriveConnectBanner(),
                 if (s.driveConnected) ...[
@@ -193,7 +236,12 @@ class _SettingsPageState extends State<SettingsPage> {
               TextField(
                 controller: _watermark,
                 maxLength: 40,
-                decoration: const InputDecoration(labelText: 'Tekst vodenog žiga', helperText: 'Prazno = naziv studija. Žig je uvek uključen za klijente.', counterText: ''),
+                decoration: const InputDecoration(
+                  labelText: 'Tekst vodenog žiga',
+                  helperText: 'Prazno = naziv studija. Žig je uvek uključen za klijente.',
+                  helperMaxLines: 3,
+                  counterText: '',
+                ),
               ),
             ]),
             const SizedBox(height: 16),
@@ -217,6 +265,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   labelText: 'Format štampe (cm)',
                   hintText: '13x18',
                   helperText: 'Isti za sve fotografije. Klijenti biraju samo broj primeraka.',
+                  helperMaxLines: 3,
                 ),
               ),
             ]),
@@ -226,7 +275,62 @@ class _SettingsPageState extends State<SettingsPage> {
               child: _saving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Sačuvaj podešavanja'),
             ),
             const SizedBox(height: 28),
-            section('Bezbednost', 'Administrator: ${s.adminEmail} · aktivnih sesija: ${s.activeSessions}', [
+            section('Lozinka', 'Posle promene ostali uređaji se odjavljuju.', [
+              AutofillGroup(
+                child: Form(
+                  key: _pwForm,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    TextFormField(
+                      controller: _pwCurrent,
+                      obscureText: !_pwShow,
+                      autofillHints: const [AutofillHints.password],
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: 'Trenutna lozinka',
+                        suffixIcon: IconButton(
+                          tooltip: _pwShow ? 'Sakrij lozinke' : 'Prikaži lozinke',
+                          onPressed: () => setState(() => _pwShow = !_pwShow),
+                          icon: Icon(_pwShow ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                        ),
+                      ),
+                      validator: (v) => (v == null || v.isEmpty) ? 'Upišite trenutnu lozinku' : null,
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _pwNext,
+                      obscureText: !_pwShow,
+                      autofillHints: const [AutofillHints.newPassword],
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(labelText: 'Nova lozinka', helperText: 'Najmanje 10 znakova.'),
+                      validator: (v) => (v == null || v.length < 10) ? 'Nova lozinka mora imati bar 10 znakova' : null,
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _pwRepeat,
+                      obscureText: !_pwShow,
+                      autofillHints: const [AutofillHints.newPassword],
+                      textInputAction: TextInputAction.done,
+                      decoration: const InputDecoration(labelText: 'Ponovite novu lozinku'),
+                      validator: (v) => v != _pwNext.text ? 'Lozinke se ne poklapaju' : null,
+                      onFieldSubmitted: (_) => _changePassword(),
+                    ),
+                    const SizedBox(height: 16),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FilledButton.tonalIcon(
+                        onPressed: _pwBusy ? null : _changePassword,
+                        icon: _pwBusy
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.key_rounded),
+                        label: const Text('Promeni lozinku'),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 16),
+            section('Bezbednost', 'Aktivnih sesija: ${s.activeSessions}', [
               Wrap(spacing: 10, runSpacing: 10, children: [
                 OutlinedButton.icon(
                   onPressed: () async {
@@ -265,6 +369,9 @@ String _auditLabel(String action) => switch (action) {
       'login' => 'Prijava',
       'login_failed' => '⚠ Neuspela prijava',
       'login_denied' => '⚠ Odbijen nalog',
+      'admin_email_set' => 'Mejl za prijavu postavljen sa servera',
+      'password_changed' => 'Promenjena lozinka',
+      'password_set_from_env' => 'Lozinka postavljena sa servera',
       'project_created' => 'Novi projekat',
       'project_updated' => 'Izmenjen projekat',
       'project_deleted' => 'Obrisan projekat',

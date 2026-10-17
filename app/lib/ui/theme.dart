@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
 /// Topla, elegantna paleta: slonovača + ugalj + smaragdno zelena.
@@ -178,7 +177,7 @@ ThemeData buildTheme() {
     ),
     pageTransitionsTheme: const PageTransitionsTheme(builders: {
       TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
-      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.iOS: FadeForwardsPageTransitionsBuilder(),
       TargetPlatform.macOS: FadeForwardsPageTransitionsBuilder(),
       TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
       TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),

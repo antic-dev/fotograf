@@ -100,7 +100,10 @@ class _AdminShellState extends State<AdminShell> {
     final index = _index;
 
     final content = Stack(children: [
-      Positioned.fill(child: widget.child),
+      // Zaseban semantički kontejner: barijera aktivne stranice inače izbaci
+      // bočni meni iz stabla pristupačnosti (čitači ekrana). Ispravljeno tek
+      // u go_router 18.0.2, koji traži noviji Flutter.
+      Positioned.fill(child: Semantics(container: true, child: widget.child)),
       Positioned(
         right: wide ? 24 : 12,
         left: wide ? null : 12,

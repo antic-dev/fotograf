@@ -11,6 +11,9 @@ Future<void> main() async {
   } on StateError catch (e) {
     stderr.writeln('Greška u podešavanjima: ${e.message}');
     exit(78);
+  } on FormatException catch (e) {
+    stderr.writeln('Greška u podešavanjima (neispravna vrednost): ${e.message}');
+    exit(78);
   }
 
   final db = Db.open(config.dataDir);
@@ -23,6 +26,14 @@ Future<void> main() async {
     mailer: Mailer(config),
   );
 
+  await services.initAdminAccount();
+  if (!services.adminAccountSet) {
+    stderr.writeln('UPOZORENJE: prijava nije podešena — postavite ADMIN_EMAIL i ADMIN_PASSWORD.');
+  }
+  if (!config.googleConfigured) {
+    stdout.writeln('Napomena: GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET nisu podešeni — Google Drive se ne može povezati.');
+  }
+
   final server = await io.serve(buildHandler(services), config.host, config.port, poweredByHeader: null);
   // Uklanja zastarela podrazumevana zaglavlja (x-xss-protection...) — naša su stroža.
   server.defaultResponseHeaders.clear();
@@ -30,7 +41,6 @@ Future<void> main() async {
   server.autoCompress = false;
   server.idleTimeout = const Duration(seconds: 120);
   stdout.writeln('Fotograf radi na http://${config.host}:${config.port}  (javni URL: ${config.publicUrl})');
-  stdout.writeln('Administrator: ${config.adminEmail}');
 
   // Keš sličica ne sme da napuni disk servera.
   Future<void> trimCache() => services.cache.trim(config.cacheMaxBytes).catchError((Object e) {

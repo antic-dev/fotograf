@@ -13,7 +13,7 @@ void main() {
   late TestApp app;
 
   setUpAll(() => google = FakeGoogle());
-  setUp(() => app = TestApp.create(google));
+  setUp(() async => app = await TestApp.create(google));
   tearDown(() => app.dispose());
 
   group('bezbednost', () {
@@ -39,39 +39,93 @@ void main() {
       expect(res.status, 403);
     });
 
-    test('samo administratorski nalog može da se prijavi', () async {
-      final start = await app.call('GET', '/api/auth/start');
-      final token = google.sign(app.idPayload(email: 'neko.drugi@gmail.com', nonce: start.json['nonce'] as String));
-      final res = await app.call('POST', '/api/auth/google', json: {'credential': token});
-      expect(res.status, 403);
-      expect((await app.call('GET', '/api/admin/projects')).status, 401);
-    });
-
-    test('prijava odbija token bez ispravnog nonce-a (replay)', () async {
-      await app.call('GET', '/api/auth/start');
-      final token = google.sign(app.idPayload(email: app.services.config.adminEmail, nonce: 'tudji-nonce'));
-      final res = await app.call('POST', '/api/auth/google', json: {'credential': token});
-      expect(res.status, 401);
-    });
-
-    test('prijava odbija neverifikovan mejl, pogrešan aud, istekao token i lažan potpis', () async {
-      Future<int> attempt(Map<String, Object?> Function(String nonce) payload, {bool tamper = false}) async {
-        final start = await app.call('GET', '/api/auth/start');
-        var token = google.sign(payload(start.json['nonce'] as String));
-        if (tamper) {
-          final parts = token.split('.');
-          final body = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1])))) as Map;
-          body['email'] = app.services.config.adminEmail;
-          token = '${parts[0]}.${b64url(utf8.encode(jsonEncode(body)))}.${parts[2]}';
-        }
-        return (await app.call('POST', '/api/auth/google', json: {'credential': token})).status;
+    test('prijava: pogrešna lozinka ili mejl se odbijaju, ispravni prolaze', () async {
+      final email = TestApp.adminEmail;
+      expect((await app.login(email, 'pogresna-lozinka')).status, 401);
+      expect((await app.login('napadac@gmail.com', TestApp.adminPassword)).status, 401);
+      expect((await app.call('GET', '/api/auth/me')).status, 401);
+      final ok = await app.login(email.toUpperCase(), TestApp.adminPassword);
+      expect(ok.status, 200, reason: 'mejl nije osetljiv na velika slova');
+      final me = await app.call('GET', '/api/auth/me');
+      expect(me.json['admin'], isTrue);
+      expect(me.text, isNot(contains(email)), reason: 'mejl administratora se nikad ne šalje pregledaču');
+      for (final path in ['/api/admin/settings', '/api/admin/overview']) {
+        expect((await app.call('GET', path)).text, isNot(contains(email)), reason: path);
       }
+      final cookie = app.cookies.entries.firstWhere((e) => e.key.contains('fa'));
+      expect(cookie.value.length, greaterThan(40));
+    });
 
-      final admin = app.services.config.adminEmail;
-      expect(await attempt((n) => app.idPayload(email: admin, nonce: n, verified: false)), 403);
-      expect(await attempt((n) => app.idPayload(email: admin, nonce: n, aud: 'drugi-klijent')), 401);
-      expect(await attempt((n) => app.idPayload(email: admin, nonce: n, exp: 1000)), 401);
-      expect(await attempt((n) => app.idPayload(email: 'napadac@gmail.com', nonce: n), tamper: true), 401);
+    test('posle 5 pogrešnih lozinki prijava se privremeno zaključava', () async {
+      final email = TestApp.adminEmail;
+      for (var i = 0; i < 5; i++) {
+        expect((await app.login(email, 'pogresno-$i')).status, 401);
+      }
+      final locked = await app.login(email, TestApp.adminPassword);
+      expect(locked.status, 429);
+      expect(locked.json['code'], 'locked');
+      // Kada zaključavanje istekne, ispravna lozinka ponovo radi.
+      app.services.db.setSetting('login_locked_until', '0');
+      expect((await app.login(email, TestApp.adminPassword)).status, 200);
+    });
+
+    test('lozinka se čuva samo kao jak heš', () async {
+      final stored = app.services.db.setting('admin_password_hash')!;
+      expect(stored, startsWith('pbkdf2-sha256\$310000\$'));
+      expect(stored, isNot(contains(TestApp.adminPassword)));
+      final dbFile = app.services.db.query('SELECT value FROM settings').map((r) => r['value']).join(' ');
+      expect(dbFile, isNot(contains(TestApp.adminPassword)));
+    });
+
+    test('promena lozinke iz podešavanja', () async {
+      await app.loginAsAdmin();
+      var res = await app.call('POST', '/api/admin/password', json: {'current': 'netacno', 'next': 'NovaLozinka-123'});
+      expect(res.status, 400);
+      res = await app.call('POST', '/api/admin/password', json: {'current': TestApp.adminPassword, 'next': 'kratka'});
+      expect(res.status, 400);
+      res = await app.call(
+        'POST',
+        '/api/admin/password',
+        json: {'current': TestApp.adminPassword, 'next': 'NovaLozinka-123'},
+      );
+      expect(res.status, 200, reason: res.text);
+      expect((await app.call('GET', '/api/auth/me')).status, 200, reason: 'ova sesija ostaje prijavljena');
+      app.cookies.clear();
+      expect((await app.login(TestApp.adminEmail, TestApp.adminPassword)).status, 401);
+      expect((await app.login(TestApp.adminEmail, 'NovaLozinka-123')).status, 200);
+    });
+
+    test('bez ADMIN_EMAIL u bazi prijava nije moguća', () async {
+      app.services.db.setSetting('admin_email', null);
+      final res = await app.login(TestApp.adminEmail, TestApp.adminPassword);
+      expect(res.status, 503);
+      expect(res.json['code'], 'no_account');
+    });
+
+    test('promena ADMIN_PASSWORD na serveru resetuje lozinku', () async {
+      await app.services.setAdminPassword('Zaboravljena-123');
+      app.services.db.setSetting('admin_password_env_fp', 'stara-vrednost');
+      await app.services.initAdminAccount();
+      expect((await app.login(TestApp.adminEmail, TestApp.adminPassword)).status, 200);
+    });
+
+    test('Google ID token se proverava kriptografski (povezivanje Drive-a)', () async {
+      final v = GoogleIdTokenVerifier(clientId: TestApp.clientId, client: google.client());
+      final email = TestApp.adminEmail;
+      final id = await v.verify(google.sign(app.idPayload(email: email)));
+      expect(id.email, email);
+      expect(id.emailVerified, isTrue);
+      await expectLater(
+        v.verify(google.sign(app.idPayload(email: email, aud: 'drugi'))),
+        throwsA(isA<IdTokenException>()),
+      );
+      await expectLater(
+        v.verify(google.sign(app.idPayload(email: email, exp: 1000))),
+        throwsA(isA<IdTokenException>()),
+      );
+      final parts = google.sign(app.idPayload(email: 'x@gmail.com')).split('.');
+      final forged = '${parts[0]}.${b64url(utf8.encode(jsonEncode(app.idPayload(email: email))))}.${parts[2]}';
+      await expectLater(v.verify(forged), throwsA(isA<IdTokenException>()));
     });
 
     test('odjava poništava sesiju', () async {
@@ -354,6 +408,21 @@ void main() {
       final res = await app.call('GET', '/main.dart.js');
       expect(res.headers['cache-control'], 'no-cache');
     });
+  });
+
+  test('ADMIN_PASSWORD_B64 prenosi i specijalne znakove', () {
+    final dir = Directory.systemTemp.createTempSync('fotograf-cfg');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    const pw =
+        r'a$b#c"d'
+        "'"
+        r'e \ š';
+    final c = Config.fromEnvironment({'DATA_DIR': dir.path, 'ADMIN_PASSWORD_B64': base64.encode(utf8.encode(pw))});
+    expect(c.adminPassword, pw);
+    expect(
+      () => Config.fromEnvironment({'DATA_DIR': dir.path, 'ADMIN_PASSWORD': 'kratka'}),
+      throwsA(isA<StateError>()),
+    );
   });
 
   test('ZIP CRC32', () {
